@@ -16,5 +16,38 @@ services:
       timeout: 5s
       retries: 10
 
+  backend:
+    build:
+      context: ./backend
+    container_name: ledgerlite-backend
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/ledgerlite
+      DB_USERNAME: ledgerlite
+      DB_PASSWORD: ledgerlite
+      JWT_SECRET: local-dev-secret-key-not-for-production-use-change-me-1234567890
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8080
+    container_name: ledgerlite-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
 volumes:
   ledgerlite-pgdata:
