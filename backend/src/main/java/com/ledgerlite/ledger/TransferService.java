@@ -46,6 +46,7 @@ public class TransferService {
     private final LedgerService ledgerService;
     private final TransactionRepository transactionRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
+    private final LedgerPostingService ledgerPostingService;
     private final IdempotencyService idempotencyService;
     private final ObjectMapper objectMapper;
 
@@ -53,12 +54,14 @@ public class TransferService {
                             LedgerService ledgerService,
                             TransactionRepository transactionRepository,
                             LedgerEntryRepository ledgerEntryRepository,
+                            LedgerPostingService ledgerPostingService,
                             IdempotencyService idempotencyService,
                             ObjectMapper objectMapper) {
         this.accountRepository = accountRepository;
         this.ledgerService = ledgerService;
         this.transactionRepository = transactionRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
+        this.ledgerPostingService = ledgerPostingService;
         this.idempotencyService = idempotencyService;
         this.objectMapper = objectMapper;
     }
@@ -126,14 +129,7 @@ public class TransferService {
             throw new InsufficientBalanceException(source.id());
         }
 
-        Transaction transaction = transactionRepository.save(
-                Transaction.newTransaction(request.reference(), initiatedByUserId));
-
-        ledgerEntryRepository.save(LedgerEntry.debit(transaction.id(), source.id(), amount));
-        ledgerEntryRepository.save(LedgerEntry.credit(transaction.id(), destination.id(), amount));
-
-        return new TransferResponse(transaction.id(), source.id(), destination.id(), amount,
-                transaction.reference(), transaction.createdAt());
+        return ledgerPostingService.post(source.id(), destination.id(), amount, request.reference(), initiatedByUserId);
     }
 
     @PostAuthorize("hasAnyRole('ADMIN', 'AUDITOR', 'TELLER') "

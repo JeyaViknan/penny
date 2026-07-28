@@ -1,9 +1,11 @@
 package com.ledgerlite.controller;
 
+import com.ledgerlite.domain.Role;
 import com.ledgerlite.dto.AccountResponse;
 import com.ledgerlite.dto.CreateAccountRequest;
 import com.ledgerlite.ledger.LedgerService;
 import com.ledgerlite.mapper.AccountMapper;
+import com.ledgerlite.security.UserPrincipal;
 import com.ledgerlite.service.AccountService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -11,6 +13,7 @@ import java.net.URI;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -41,9 +44,13 @@ public class AccountController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'AUDITOR', 'TELLER')")
-    public ResponseEntity<List<AccountResponse>> listAccounts() {
-        var response = accountService.listAll().stream()
+    public ResponseEntity<List<AccountResponse>> listAccounts(@AuthenticationPrincipal UserPrincipal principal) {
+        // A CUSTOMER sees only their own accounts rather than being denied
+        // outright -- the broader roles see every account.
+        var accounts = principal.getUser().role() == Role.CUSTOMER
+                ? accountService.listForOwner(principal.getId())
+                : accountService.listAll();
+        var response = accounts.stream()
                 .map(a -> accountMapper.toResponse(a, ledgerService.getBalance(a.id())))
                 .toList();
         return ResponseEntity.ok(response);

@@ -118,6 +118,19 @@ class AccountControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void customerListingAccountsSeesOnlyOwnAccounts() throws Exception {
+        accountRepository.save(Account.newAccount("999900004444", customer.id(), AccountType.CHECKING, "USD"));
+        accountRepository.save(Account.newAccount("999900005555", teller.id(), AccountType.CHECKING, "USD"));
+
+        String token = accessTokenFor("customer1", "Password123!");
+
+        mockMvc.perform(get("/accounts").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].ownerUserId", org.hamcrest.Matchers.everyItem(
+                        org.hamcrest.Matchers.equalTo(customer.id().intValue()))));
+    }
+
     private String accessTokenFor(String username, String password) throws Exception {
         var result = mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

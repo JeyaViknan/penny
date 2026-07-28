@@ -1,5 +1,6 @@
 package com.ledgerlite.service;
 
+import com.ledgerlite.audit.Audited;
 import com.ledgerlite.domain.User;
 import com.ledgerlite.dto.CreateUserRequest;
 import com.ledgerlite.exception.DuplicateResourceException;
@@ -25,6 +26,7 @@ public class UserService {
 
     @Transactional
     @PreAuthorize("hasAnyRole('ADMIN', 'TELLER')")
+    @Audited(action = "CREATE_USER", entityType = "User")
     public User createUser(CreateUserRequest request) {
         if (userRepository.existsByUsername(request.username())) {
             throw new DuplicateResourceException("Username already taken: " + request.username());
@@ -46,9 +48,16 @@ public class UserService {
         return StreamSupport.stream(userRepository.findAll().spliterator(), false).toList();
     }
 
+    /** Unrestricted: used internally (e.g. token refresh, FK existence checks) where there is no end-user request to authorize. */
     public User getById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("No user with id: " + id));
+    }
+
+    /** Authorization boundary for "view a user's profile" -- ADMIN/AUDITOR/TELLER can view anyone, a CUSTOMER only themselves. */
+    @PreAuthorize("hasAnyRole('ADMIN', 'AUDITOR', 'TELLER') or #id == authentication.principal.id")
+    public User getProfile(Long id) {
+        return getById(id);
     }
 
     public User getByUsername(String username) {

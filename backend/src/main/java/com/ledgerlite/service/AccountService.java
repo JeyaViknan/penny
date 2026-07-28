@@ -1,5 +1,6 @@
 package com.ledgerlite.service;
 
+import com.ledgerlite.audit.Audited;
 import com.ledgerlite.domain.Account;
 import com.ledgerlite.dto.CreateAccountRequest;
 import com.ledgerlite.exception.ResourceNotFoundException;
@@ -28,6 +29,7 @@ public class AccountService {
 
     @Transactional
     @PreAuthorize("hasAnyRole('ADMIN', 'TELLER')")
+    @Audited(action = "CREATE_ACCOUNT", entityType = "Account")
     public Account createAccount(CreateAccountRequest request) {
         // Fail fast with a clear 404 rather than letting the FK constraint
         // surface a raw SQL error to the caller.
