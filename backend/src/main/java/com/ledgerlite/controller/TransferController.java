@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,9 +29,11 @@ public class TransferController {
     }
 
     @PostMapping
-    public ResponseEntity<TransferResponse> createTransfer(@Valid @RequestBody TransferRequest request,
-                                                             @AuthenticationPrincipal UserPrincipal principal) {
-        var response = transferService.transfer(request, principal.getId());
+    public ResponseEntity<TransferResponse> createTransfer(
+            @Valid @RequestBody TransferRequest request,
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        var response = transferService.transfer(request, principal.getId(), idempotencyKey);
         return ResponseEntity.created(URI.create("/transfers/" + response.transactionId())).body(response);
     }
 
