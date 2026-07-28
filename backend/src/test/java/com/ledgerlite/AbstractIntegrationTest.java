@@ -6,8 +6,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * Base class for tests that need a real PostgreSQL instance. Every
@@ -17,18 +15,29 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * against the real database engine. Requests go through MockMvc rather
  * than a raw HTTP client so the full filter chain (JWT, CORS, exception
  * handling) runs without the flakiness of managing real sockets in tests.
+ *
+ * <p>The container uses the Testcontainers "singleton" pattern -- started
+ * once in a static initializer and never stopped explicitly -- rather than
+ * the {@code @Container}/{@code @Testcontainers} per-class lifecycle. That
+ * lets every test class share one Postgres instance instead of each
+ * spinning up its own, which is both faster and avoids resource
+ * contention when the whole suite runs.
  */
-@Testcontainers
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 public abstract class AbstractIntegrationTest {
 
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
-            .withDatabaseName("ledgerlite_test")
-            .withUsername("ledgerlite")
-            .withPassword("ledgerlite");
+    static final PostgreSQLContainer<?> POSTGRES;
+
+    static {
+        POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+                .withDatabaseName("ledgerlite_test")
+                .withUsername("ledgerlite")
+                .withPassword("ledgerlite")
+                .withReuse(false);
+        POSTGRES.start();
+    }
 
     @DynamicPropertySource
     static void datasourceProperties(DynamicPropertyRegistry registry) {
