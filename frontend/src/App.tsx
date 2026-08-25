@@ -5,7 +5,7 @@ import { AppShell } from './components/AppShell'
 import { ToastProvider } from './components/ui/Toast'
 import { AccountDetailPage } from './pages/AccountDetailPage'
 import { AccountsPage } from './pages/AccountsPage'
-import { ActivityPage } from './pages/ActivityPage'
+import { TransactionsPage } from './pages/TransactionsPage'
 import { AuditPage } from './pages/AuditPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
@@ -31,7 +31,7 @@ export default function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/accounts/:id" element={<AccountDetailPage />} />
-            <Route path="/activity" element={<ActivityPage />} />
+            <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/transfers/:id" element={<TransferDetailPage />} />
             <Route
               path="/transfer"

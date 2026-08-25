@@ -39,6 +39,13 @@ export interface LedgerEntryResponse {
   accountId: number
   entryType: EntryType
   amountMinorUnits: number
+  /**
+   * The account balance immediately after this entry, accumulated over the
+   * account's whole history. Null when the entries were not requested as one
+   * account's sequence -- the two legs of a single transfer sit on different
+   * accounts and share no running total.
+   */
+  runningBalanceMinorUnits: number | null
   createdAt: string
 }
 
@@ -63,9 +70,43 @@ export interface TransactionSummaryResponse {
   amountMinorUnits: number
   debitAccountId: number
   debitAccountNumber: string
+  /** Null for the cash vault, which is bank-owned and has no holder. */
+  debitOwnerUsername: string | null
   creditAccountId: number
   creditAccountNumber: string
+  creditOwnerUsername: string | null
+  initiatedByUserId: number | null
+  initiatedByUsername: string | null
   createdAt: string
+}
+
+/** Sortable columns on the transaction list. Mirrors the backend enum. */
+export type TransactionSort = 'DATE' | 'AMOUNT'
+export type SortDirection = 'ASC' | 'DESC'
+
+export interface TransactionQuery {
+  accountId?: number
+  q?: string
+  type?: TransactionType[]
+  from?: string
+  to?: string
+  minAmount?: number
+  maxAmount?: number
+  sort?: TransactionSort
+  direction?: SortDirection
+  page?: number
+  size?: number
+}
+
+export interface AuditQuery {
+  action?: string
+  entityType?: string
+  entityId?: string
+  actorUserId?: number
+  from?: string
+  to?: string
+  page?: number
+  size?: number
 }
 
 export interface CashResponse {
@@ -81,6 +122,7 @@ export interface CashResponse {
 export interface AuditLogResponse {
   id: number
   actorUserId: number | null
+  actorUsername: string | null
   action: string
   entityType: string
   entityId: string | null

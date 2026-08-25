@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { ledgerApi } from '../api/endpoints'
 import type { Role } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { cn } from '../lib/cn'
+import { titleCase } from '../lib/text'
+import { useAsync } from '../lib/useAsync'
 import {
   IconAccounts,
   IconAudit,
@@ -11,7 +14,6 @@ import {
   IconHistory,
   IconLogout,
   IconMenu,
-  IconTransfer,
   IconUsers,
 } from './Icons'
 
@@ -19,26 +21,48 @@ interface NavItem {
   to: string
   label: string
   icon: (props: { className?: string }) => React.ReactElement
-  tone: string
   roles: Role[]
 }
 
+interface NavGroup {
+  /** Undefined for the first group, which needs no label to be understood. */
+  label?: string
+  items: NavItem[]
+}
+
+const ALL: Role[] = ['CUSTOMER', 'TELLER', 'AUDITOR', 'ADMIN']
+
 /**
- * Navigation in the shape of a macOS source list: a translucent sidebar, rows
- * with a rounded selection pill, and a small tinted glyph per item so sections
- * are recognisable by colour and shape before the label is read.
+ * Two labelled groups rather than six flat items.
  *
- * Labels name their contents rather than using vague umbrellas -- "Overview"
- * over "Home", "Activity" over "Data" -- so people can predict what they will
- * find before they click.
+ * <p>Flat lists give no sense of a system's shape, and this one has an obvious
+ * shape: there is the money, and there is the administration of the money.
+ * Separating them also means a customer's shorter nav reads as complete rather
+ * than as the staff nav with things taken away.
+ *
+ * <p>"Send money" is deliberately absent. It is an action, not a place, and as
+ * a nav item it forced a destination on something that should be reachable from
+ * anywhere -- above all from an account you are already looking at. It lives in
+ * the top bar instead.
  */
-const NAV_ITEMS: NavItem[] = [
-  { to: '/', label: 'Overview', icon: IconDashboard, tone: 'var(--blue)', roles: ['CUSTOMER', 'TELLER', 'AUDITOR', 'ADMIN'] },
-  { to: '/accounts', label: 'Accounts', icon: IconAccounts, tone: 'var(--indigo)', roles: ['CUSTOMER', 'TELLER', 'AUDITOR', 'ADMIN'] },
-  { to: '/activity', label: 'Activity', icon: IconHistory, tone: 'var(--green-fill)', roles: ['CUSTOMER', 'TELLER', 'AUDITOR', 'ADMIN'] },
-  { to: '/transfer', label: 'Send money', icon: IconTransfer, tone: 'var(--orange-fill)', roles: ['CUSTOMER', 'TELLER', 'ADMIN'] },
-  { to: '/people', label: 'People', icon: IconUsers, tone: 'var(--gray)', roles: ['ADMIN', 'AUDITOR'] },
-  { to: '/audit', label: 'Audit trail', icon: IconAudit, tone: 'var(--red-fill)', roles: ['AUDITOR', 'ADMIN'] },
+const NAV: NavGroup[] = [
+  {
+    items: [{ to: '/', label: 'Overview', icon: IconDashboard, roles: ALL }],
+  },
+  {
+    label: 'Ledger',
+    items: [
+      { to: '/transactions', label: 'Transactions', icon: IconHistory, roles: ALL },
+      { to: '/accounts', label: 'Accounts', icon: IconAccounts, roles: ALL },
+    ],
+  },
+  {
+    label: 'Administration',
+    items: [
+      { to: '/people', label: 'People', icon: IconUsers, roles: ['ADMIN', 'AUDITOR'] },
+      { to: '/audit', label: 'Audit', icon: IconAudit, roles: ['ADMIN', 'AUDITOR'] },
+    ],
+  },
 ]
 
 export function AppShell() {
@@ -46,151 +70,322 @@ export function AppShell() {
   const location = useLocation()
   const [navOpen, setNavOpen] = useState(false)
 
-  // Navigating always dismisses the drawer; leaving it open over the page the
-  // person just chose reads as broken.
   useEffect(() => {
     setNavOpen(false)
   }, [location.pathname])
 
+  // Scroll restoration. Without this a router navigation keeps the previous
+  // page's scroll offset, so arriving at a page from halfway down a long table
+  // drops you into the middle of the new one.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [location.pathname])
+
   if (!user) return null
-  const items = NAV_ITEMS.filter((item) => item.roles.includes(user.role))
+
+  const groups = NAV.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => item.roles.includes(user.role)),
+  })).filter((group) => group.items.length > 0)
+
+  const canSendMoney = user.role !== 'AUDITOR'
 
   return (
-    <div className="min-h-screen bg-[var(--bg-grouped)]">
-      {/* Compact top bar. Translucent, with content scrolling beneath it rather
-          than being clipped by an opaque strip. */}
-      <header className="sticky top-0 z-30 flex h-[52px] items-center gap-2 border-b border-[var(--separator)] bg-white/80 px-3 backdrop-blur-xl lg:hidden">
-        <button
-          onClick={() => setNavOpen(true)}
-          aria-label="Open navigation"
-          aria-expanded={navOpen}
-          className="rounded-[8px] p-2 text-[var(--blue)] transition-opacity active:opacity-55"
-        >
-          <IconMenu className="h-[22px] w-[22px]" />
-        </button>
-        <Wordmark />
-      </header>
+    <div className="min-h-screen bg-canvas">
+      {/* Keyboard users reach the content without tabbing the whole sidebar. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-ink focus:px-3 focus:py-2 focus:text-ink-inverse"
+      >
+        Skip to content
+      </a>
+
+      <Sidebar groups={groups} username={user.username} role={user.role} onLogout={logout} />
 
       {navOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden">
           <div
-            className="absolute inset-0 bg-black/25 motion-safe:animate-[fade-in_var(--duration-fast)_var(--ease)]"
+            className="anim-fade absolute inset-0 bg-ink/25"
             onClick={() => setNavOpen(false)}
             aria-hidden="true"
           />
-          <nav
-            aria-label="Main"
-            className="absolute inset-y-0 left-0 flex w-[17rem] flex-col bg-white shadow-[var(--shadow-sheet)] motion-safe:animate-[drawer-in_var(--duration-base)_var(--ease)]"
-          >
-            <div className="flex h-[52px] items-center justify-between border-b border-[var(--separator)] px-4">
-              <Wordmark />
-              <button
-                onClick={() => setNavOpen(false)}
-                aria-label="Close navigation"
-                className="rounded-[8px] p-1.5 text-[var(--blue)] active:opacity-55"
-              >
-                <IconClose className="h-5 w-5" />
-              </button>
-            </div>
-            <NavList items={items} />
-            <UserPanel username={user.username} role={user.role} onLogout={logout} />
-          </nav>
+          <div className="absolute inset-y-0 left-0 w-[268px] bg-surface shadow-[var(--shadow-pop)]">
+            <Sidebar
+              groups={groups}
+              username={user.username}
+              role={user.role}
+              onLogout={logout}
+              variant="drawer"
+              onClose={() => setNavOpen(false)}
+            />
+          </div>
         </div>
       )}
 
-      {/* Desktop source list */}
-      <nav
-        aria-label="Main"
-        className="fixed inset-y-0 left-0 z-20 hidden w-[var(--sidebar-width)] flex-col border-r border-[var(--separator)] bg-white/70 backdrop-blur-xl lg:flex"
-      >
-        <div className="flex h-[60px] items-center px-5">
-          <Wordmark />
-        </div>
-        <NavList items={items} />
-        <UserPanel username={user.username} role={user.role} onLogout={logout} />
-      </nav>
-
-      <main className="lg:pl-[var(--sidebar-width)]">
-        <div key={location.pathname} className="view-enter mx-auto max-w-3xl py-7 sm:px-6 lg:px-10 lg:py-10">
+      <div className="lg:pl-[var(--w-rail)] xl:pl-[var(--w-sidebar)]">
+        <TopBar
+          canSendMoney={canSendMoney}
+          onOpenNav={() => setNavOpen(true)}
+          navOpen={navOpen}
+        />
+        <main id="main" tabIndex={-1}>
           <Outlet />
-        </div>
-      </main>
-    </div>
-  )
-}
-
-function Wordmark() {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-[var(--blue)] text-[14px] font-bold text-white">
-        P
+        </main>
       </div>
-      <span className="text-[17px] font-semibold tracking-[-0.022em] text-[var(--label)]">Penny</span>
     </div>
   )
 }
 
-function NavList({ items }: { items: NavItem[] }) {
+/**
+ * The top bar carries the one action that belongs on every screen and the
+ * signed-in identity. It is 52px and it does not move -- the frame landing in
+ * the same place on every page is what lets someone stop looking for it.
+ */
+function TopBar({
+  canSendMoney,
+  onOpenNav,
+  navOpen,
+}: {
+  canSendMoney: boolean
+  onOpenNav: () => void
+  navOpen: boolean
+}) {
   return (
-    <div className="flex-1 space-y-0.5 overflow-y-auto px-2.5 py-2">
-      {items.map((item) => {
-        const Icon = item.icon
-        return (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-2.5 rounded-[8px] px-2.5 py-[7px] text-[15px]',
-                'transition-colors duration-[var(--duration-press)]',
-                isActive
-                  ? 'bg-[var(--blue)] font-medium text-white'
-                  : 'text-[var(--label)] hover:bg-[var(--fill-quaternary)]',
-              )
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <span
-                  className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[6px]"
-                  style={{ background: isActive ? 'rgba(255,255,255,0.24)' : item.tone }}
-                >
-                  <Icon className="h-[15px] w-[15px] text-white" />
-                </span>
-                {item.label}
-              </>
+    <header className="sticky top-0 z-30 flex h-[var(--h-topbar)] items-center gap-3 border-b border-line bg-canvas/95 px-[var(--gutter)] backdrop-blur-sm">
+      <button
+        type="button"
+        onClick={onOpenNav}
+        aria-label="Open navigation"
+        aria-expanded={navOpen}
+        className="-ml-1.5 rounded-md p-1.5 text-ink-2 hover:bg-hover lg:hidden"
+      >
+        <IconMenu className="h-4 w-4" />
+      </button>
+      <span className="lg:hidden">
+        <Wordmark />
+      </span>
+
+      <div className="flex-1" />
+
+      {canSendMoney && (
+        <Link
+          to="/transfer"
+          className="inline-flex h-[var(--h-control)] items-center rounded-md bg-ink px-3 text-[13px] font-medium text-ink-inverse transition-colors duration-[var(--dur-fast)] hover:bg-[#000] active:translate-y-px"
+        >
+          Send money
+        </Link>
+      )}
+    </header>
+  )
+}
+
+function Sidebar({
+  groups,
+  username,
+  role,
+  onLogout,
+  variant = 'fixed',
+  onClose,
+}: {
+  groups: NavGroup[]
+  username: string
+  role: Role
+  onLogout: () => void
+  variant?: 'fixed' | 'drawer'
+  onClose?: () => void
+}) {
+  const drawer = variant === 'drawer'
+
+  return (
+    <nav
+      aria-label="Main"
+      className={cn(
+        'flex flex-col border-r border-line bg-surface',
+        drawer
+          ? 'h-full w-full'
+          : 'fixed inset-y-0 left-0 z-20 hidden w-[var(--w-rail)] lg:flex xl:w-[var(--w-sidebar)]',
+      )}
+    >
+      <div
+        className={cn(
+          'flex h-[var(--h-topbar)] shrink-0 items-center border-b border-line',
+          drawer ? 'justify-between px-4' : 'px-4 lg:justify-center xl:justify-start',
+        )}
+      >
+        {drawer ? (
+          <>
+            <Wordmark />
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close navigation"
+              className="rounded-md p-1.5 text-ink-2 hover:bg-hover"
+            >
+              <IconClose className="h-4 w-4" />
+            </button>
+          </>
+        ) : (
+          <Wordmark collapsible />
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto py-3">
+        {groups.map((group, index) => (
+          <div key={group.label ?? index} className={index > 0 ? 'mt-5' : ''}>
+            {group.label && (
+              <p
+                className={cn(
+                  't-col px-4 pb-1.5',
+                  // The rail has no room for a group label; the gap between
+                  // groups carries the grouping on its own at that width.
+                  drawer ? '' : 'hidden xl:block',
+                )}
+              >
+                {group.label}
+              </p>
             )}
-          </NavLink>
+            <ul className="space-y-px px-2">
+              {group.items.map((item) => (
+                <li key={item.to}>
+                  <NavItemLink item={item} compact={!drawer} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      {(role === 'ADMIN' || role === 'AUDITOR') && <IntegrityIndicator compact={!drawer} />}
+      <UserPanel username={username} role={role} onLogout={onLogout} compact={!drawer} />
+    </nav>
+  )
+}
+
+function NavItemLink({ item, compact }: { item: NavItem; compact: boolean }) {
+  const Icon = item.icon
+  return (
+    <NavLink
+      to={item.to}
+      end={item.to === '/'}
+      title={item.label}
+      className={({ isActive }) =>
+        cn(
+          'flex h-8 items-center gap-2.5 rounded-md text-[13px] transition-colors duration-[var(--dur-fast)]',
+          compact ? 'justify-center px-0 xl:justify-start xl:px-2.5' : 'px-2.5',
+          // Selection is a neutral tint and a weight change, not a saturated
+          // pill. A blue block behind the active item is the loudest thing on
+          // the screen and it marks the one place you already know you are.
+          isActive
+            ? 'bg-[var(--surface-active)] font-medium text-ink'
+            : 'text-ink-2 hover:bg-hover hover:text-ink',
         )
-      })}
+      }
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className={compact ? 'hidden xl:inline' : ''}>{item.label}</span>
+    </NavLink>
+  )
+}
+
+/**
+ * The invariant, made ambient.
+ *
+ * <p>Penny can prove that no money was created or destroyed: every account
+ * balance sums to exactly zero, because money entering the ledger is posted
+ * against a cash vault rather than conjured. That is the most credible thing
+ * about the product and it used to be buried on the audit page, which most
+ * people never open. Here it is present on every screen, and quiet while it is
+ * true -- which is the right volume for a fact that only matters when it stops
+ * being one.
+ *
+ * <p>Rendered only for roles the API actually grants it to. Reading the
+ * integrity check is admin and auditor territory, and mounting this for a teller
+ * would fire a request that always 403s -- the indicator would then be
+ * permanently absent for reasons indistinguishable from the ledger being fine.
+ */
+function IntegrityIndicator({ compact }: { compact: boolean }) {
+  const { data, error } = useAsync(() => ledgerApi.integrity(), [])
+
+  if (error || !data) return null
+  const balanced = data.balanced
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 border-t border-line px-4 py-2.5',
+        compact ? 'justify-center xl:justify-start' : '',
+      )}
+      title={balanced ? 'Debits and credits are equal across every account' : 'Ledger does not balance'}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          'h-1.5 w-1.5 shrink-0 rounded-full',
+          balanced ? 'bg-positive' : 'bg-negative',
+        )}
+      />
+      <span className={cn('t-micro', compact ? 'hidden xl:inline' : '')}>
+        {balanced ? 'Books balanced' : 'Ledger out of balance'}
+      </span>
     </div>
   )
 }
 
-function UserPanel({ username, role, onLogout }: { username: string; role: Role; onLogout: () => void }) {
+function UserPanel({
+  username,
+  role,
+  onLogout,
+  compact,
+}: {
+  username: string
+  role: Role
+  onLogout: () => void
+  compact: boolean
+}) {
   return (
-    <div className="border-t border-[var(--separator)] p-2.5">
-      <div className="flex items-center gap-2.5 px-1.5 py-1.5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--fill-tertiary)] text-[14px] font-semibold uppercase text-[var(--label-secondary)]">
+    <div className="border-t border-line p-2">
+      <div className={cn('flex items-center gap-2.5 px-1.5 py-1', compact ? 'justify-center xl:justify-start' : '')}>
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-[var(--surface-active)] text-[11px] font-semibold uppercase text-ink-2">
           {username.slice(0, 1)}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="t-subhead truncate font-medium text-[var(--label)]">{username}</p>
-          <p className="t-caption text-[var(--label-tertiary)]">{titleCase(role)}</p>
+        </span>
+        <div className={cn('min-w-0 flex-1', compact ? 'hidden xl:block' : '')}>
+          <p className="truncate text-[13px] font-medium text-ink">{username}</p>
+          <p className="t-micro">{titleCase(role)}</p>
         </div>
       </div>
       <button
+        type="button"
         onClick={onLogout}
-        className="mt-1 flex w-full items-center gap-2.5 rounded-[8px] px-2.5 py-[7px] text-[15px] text-[var(--blue)] transition-colors hover:bg-[var(--fill-quaternary)] active:opacity-55"
+        className={cn(
+          'mt-0.5 flex h-8 w-full items-center gap-2.5 rounded-md text-[13px] text-ink-2 transition-colors hover:bg-hover hover:text-ink',
+          compact ? 'justify-center px-0 xl:justify-start xl:px-2.5' : 'px-2.5',
+        )}
       >
-        <IconLogout className="h-[18px] w-[18px]" />
-        Sign out
+        <IconLogout className="h-4 w-4 shrink-0" />
+        <span className={compact ? 'hidden xl:inline' : ''}>Sign out</span>
       </button>
     </div>
   )
 }
 
-function titleCase(value: string): string {
-  return value.charAt(0) + value.slice(1).toLowerCase()
+/**
+ * One wordmark, defined once. There were previously three copies of this in the
+ * codebase, which is how a product ends up with two subtly different logos.
+ */
+export function Wordmark({ collapsible = false }: { collapsible?: boolean }) {
+  return (
+    <span className="flex items-center gap-2">
+      <span className="flex h-[22px] w-[22px] items-center justify-center rounded-sm bg-ink text-[12px] font-semibold text-ink-inverse">
+        P
+      </span>
+      <span
+        className={cn(
+          'text-[15px] font-semibold tracking-[-0.01em] text-ink',
+          collapsible ? 'hidden xl:inline' : '',
+        )}
+      >
+        Penny
+      </span>
+    </span>
+  )
 }

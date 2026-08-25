@@ -1,14 +1,23 @@
 /**
- * A small, consistent icon set drawn on one 20x20 grid with a single 1.6
- * stroke weight. Mixing icon families is one of the fastest ways to make an
- * interface look assembled rather than designed, so these are hand-kept
- * uniform rather than pulled from a library.
+ * A small, consistent icon set drawn on one 20x20 grid with a single stroke
+ * weight. Mixing icon families is one of the fastest ways to make an interface
+ * look assembled rather than designed, so these are hand-kept uniform rather
+ * than pulled from a library.
+ *
+ * <p>Icons render at 16px here, not 20. The stroke is set to 1.75 on the 20-unit
+ * grid so that it lands at roughly 1.4 device pixels once scaled down -- at the
+ * original 1.6 the whole set went faint and spidery at the smaller size.
+ *
+ * <p>They are furniture, never decoration: an icon appears where it aids
+ * recognition (navigation, a directional cue) and nowhere else. In particular
+ * there are no coloured glyph tiles -- a saturated square next to every row
+ * makes colour meaningless, because it then marks nothing in particular.
  */
 const base = {
   viewBox: '0 0 20 20',
   fill: 'none',
   stroke: 'currentColor',
-  strokeWidth: 1.6,
+  strokeWidth: 1.75,
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
   'aria-hidden': true,
@@ -112,5 +121,68 @@ export const IconLogout = ({ className }: IconProps) => (
   <svg {...base} className={className}>
     <path d="M12.5 6V4.5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h6.5a1 1 0 0 0 1-1V14" />
     <path d="M8.5 10h8M14 7.5 16.5 10 14 12.5" />
+  </svg>
+)
+
+/* --- Chrome and controls ------------------------------------------------- */
+
+export const IconChevronRight = ({ className }: IconProps) => (
+  <svg {...base} className={className}>
+    <path d="M7.5 4.5l5 5.5-5 5.5" />
+  </svg>
+)
+
+export const IconChevronDown = ({ className }: IconProps) => (
+  <svg {...base} className={className}>
+    <path d="M5 8l5 4.5L15 8" />
+  </svg>
+)
+
+export const IconSearch = ({ className }: IconProps) => (
+  <svg {...base} className={className}>
+    <circle cx="9" cy="9" r="5.25" />
+    <path d="M12.9 12.9L16.5 16.5" />
+  </svg>
+)
+
+/** Sort indicator: a caret whose direction is the sort direction. */
+export const IconCaretUp = ({ className }: IconProps) => (
+  <svg {...base} className={className} strokeWidth={2}>
+    <path d="M6 11.5l4-4 4 4" />
+  </svg>
+)
+
+export const IconCaretDown = ({ className }: IconProps) => (
+  <svg {...base} className={className} strokeWidth={2}>
+    <path d="M6 8.5l4 4 4-4" />
+  </svg>
+)
+
+export const IconCheck = ({ className }: IconProps) => (
+  <svg {...base} className={className}>
+    <path d="M4.5 10.5l3.5 3.5 7.5-8" />
+  </svg>
+)
+
+export const IconAlert = ({ className }: IconProps) => (
+  <svg {...base} className={className}>
+    <circle cx="10" cy="10" r="7" />
+    <path d="M10 6.25v4.5" />
+    <path d="M10 13.5v.01" />
+  </svg>
+)
+
+export const IconExternal = ({ className }: IconProps) => (
+  <svg {...base} className={className}>
+    <path d="M8 4.5H4.5v11h11V12" />
+    <path d="M11.5 4.5h4v4" />
+    <path d="M15.5 4.5l-6 6" />
+  </svg>
+)
+
+/** Row overflow menu. Three dots, because anything else invents a metaphor. */
+export const IconMore = ({ className }: IconProps) => (
+  <svg {...base} className={className} strokeWidth={2.25}>
+    <path d="M5 10v.01M10 10v.01M15 10v.01" />
   </svg>
 )

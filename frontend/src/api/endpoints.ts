@@ -3,12 +3,14 @@ import type {
   AccountResponse,
   AccountStatus,
   AuditLogResponse,
+  AuditQuery,
   AuthResponse,
   CashResponse,
   LedgerEntryResponse,
   LedgerIntegrityResponse,
   PageResponse,
   Role,
+  TransactionQuery,
   TransactionSummaryResponse,
   TransferResponse,
   UserResponse,
@@ -54,8 +56,14 @@ export const accountsApi = {
 }
 
 export const ledgerApi = {
-  forAccount: (accountId: number) =>
-    apiClient.get<LedgerEntryResponse[]>(`/ledger/${accountId}`).then((r) => r.data),
+  /** One account's postings, newest first, each carrying the balance after it. */
+  forAccount: (accountId: number, params: { page?: number; size?: number } = {}) =>
+    apiClient
+      .get<PageResponse<LedgerEntryResponse>>(`/ledger/${accountId}`, { params })
+      .then((r) => r.data),
+  /** Both legs of one transaction -- the debit and the credit side. Staff only. */
+  forTransaction: (transactionId: number) =>
+    apiClient.get<LedgerEntryResponse[]>(`/ledger/transaction/${transactionId}`).then((r) => r.data),
   integrity: () => apiClient.get<LedgerIntegrityResponse>('/ledger/integrity').then((r) => r.data),
 }
 
@@ -70,12 +78,13 @@ export const transfersApi = {
       .post<TransferResponse>('/transfers', payload, { headers: { 'Idempotency-Key': idempotencyKey() } })
       .then((r) => r.data),
   get: (id: number) => apiClient.get<TransferResponse>(`/transfers/${id}`).then((r) => r.data),
-  history: (params: { page?: number; size?: number; accountId?: number } = {}) =>
+  history: (params: TransactionQuery = {}) =>
     apiClient
       .get<PageResponse<TransactionSummaryResponse>>('/transfers', { params })
       .then((r) => r.data),
 }
 
 export const auditApi = {
-  list: () => apiClient.get<AuditLogResponse[]>('/audit').then((r) => r.data),
+  search: (params: AuditQuery = {}) =>
+    apiClient.get<PageResponse<AuditLogResponse>>('/audit', { params }).then((r) => r.data),
 }

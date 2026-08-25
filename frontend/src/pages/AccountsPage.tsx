@@ -1,110 +1,222 @@
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { extractErrorMessage } from '../api/client'
 import { accountsApi, usersApi } from '../api/endpoints'
+import type { AccountResponse } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { IconAccounts, IconPlus } from '../components/Icons'
+import { PageLayout } from '../components/layout/PageLayout'
+import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
-import { SelectInput } from '../components/ui/Field'
-import { Glyph, ListRow, ListSection } from '../components/ui/List'
-import { Sheet } from '../components/ui/Sheet'
-import { Badge, EmptyState, ErrorState, PageHeader } from '../components/ui/Surface'
+import { DataTable, type Column } from '../components/ui/DataTable'
+import { Field, Select } from '../components/ui/Field'
+import { Money } from '../components/ui/Money'
+import { Modal } from '../components/ui/Overlay'
+import { AsyncSection, EmptyState, ErrorState, TableSkeleton } from '../components/ui/States'
+import { ClearFilters, FilterSelect, SearchInput, Toolbar } from '../components/ui/Toolbar'
 import { useToast } from '../components/ui/Toast'
-import { formatAccountNumber, formatMinorUnits } from '../lib/money'
-import { useAsync } from '../lib/useAsync'
-import { RowSkeletons } from '../components/TransactionRow'
+import { formatShortDate } from '../lib/format'
+import { formatDateTime } from '../lib/money'
 import { titleCase } from '../lib/text'
+import { useAsync } from '../lib/useAsync'
+import { statusLabel, statusTone } from './accountStatus'
 
+const STATUS_OPTIONS = [
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'INACTIVE', label: 'Frozen' },
+  { value: 'CLOSED', label: 'Closed' },
+]
+
+const TYPE_OPTIONS = [
+  { value: 'CHECKING', label: 'Checking' },
+  { value: 'SAVINGS', label: 'Savings' },
+]
+
+/**
+ * The account register.
+ *
+ * <p>Filtering here is client-side, which is defensible only because
+ * {@code GET /accounts} returns the caller's complete set rather than a page of
+ * it — so the filter genuinely applies to everything, not to whatever happened
+ * to load. The moment that endpoint becomes paged, this has to move to the
+ * server, for the same reason the transaction filters already live there.
+ */
 export function AccountsPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const accounts = useAsync(() => accountsApi.list(), [])
-  const [sheetOpen, setSheetOpen] = useState(false)
+
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('')
+  const [type, setType] = useState('')
+  const [creating, setCreating] = useState(false)
 
   const canOpen = user?.role === 'ADMIN' || user?.role === 'TELLER'
   const isStaff = user?.role !== 'CUSTOMER'
-  const list = accounts.data ?? []
+
+  const rows = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return (accounts.data ?? []).filter((account) => {
+      if (status && account.status !== status) return false
+      if (type && account.accountType !== type) return false
+      if (!term) return true
+      return (
+        account.accountNumber.includes(term) ||
+        (account.ownerUsername ?? '').toLowerCase().includes(term)
+      )
+    })
+  }, [accounts.data, search, status, type])
+
+  const columns = useMemo<Column<AccountResponse>[]>(
+    () => [
+      {
+        key: 'number',
+        header: 'Account',
+        width: '150px',
+        render: (row) => <span className="t-ident text-ink">{row.accountNumber}</span>,
+      },
+      {
+        key: 'holder',
+        header: 'Holder',
+        render: (row) => (
+          <span className="t-row block truncate text-ink">{row.ownerUsername ?? 'The institution'}</span>
+        ),
+      },
+      {
+        key: 'type',
+        header: 'Type',
+        width: '100px',
+        minWidth: 'lg',
+        render: (row) => <span className="t-row text-ink-2">{titleCase(row.accountType)}</span>,
+      },
+      {
+        key: 'status',
+        header: 'Status',
+        width: '92px',
+        render: (row) => <Badge tone={statusTone(row.status)}>{statusLabel(row.status)}</Badge>,
+      },
+      {
+        key: 'opened',
+        header: 'Opened',
+        width: '110px',
+        minWidth: 'xl',
+        render: (row) => (
+          <span className="t-row text-ink-2" title={formatDateTime(row.createdAt)}>
+            {formatShortDate(row.createdAt)}
+          </span>
+        ),
+      },
+      {
+        key: 'balance',
+        header: 'Balance',
+        align: 'right',
+        width: '140px',
+        render: (row) => (
+          <Money minorUnits={row.balanceMinorUnits} currency={row.currency} variant="balance" />
+        ),
+      },
+    ],
+    [],
+  )
+
+  const filtered = Boolean(search || status || type)
 
   return (
-    <div>
-      <PageHeader
+    <>
+      <PageLayout
         title="Accounts"
-        action={
-          canOpen && (
-            <Button variant="tinted" iconLeft={<IconPlus className="h-[18px] w-[18px]" />} onClick={() => setSheetOpen(true)}>
-              Open
-            </Button>
-          )
-        }
-      />
-
-      {accounts.error && (
-        <div className="mb-6 px-4 sm:px-0">
-          <ErrorState message={accounts.error} onRetry={accounts.reload} />
-        </div>
-      )}
-
-      <ListSection
-        footer={
-          isStaff && list.length > 0
-            ? 'The institution’s own cash vault is not listed here — it exists only as the counterparty that keeps deposits and withdrawals balanced.'
-            : undefined
+        actions={canOpen && <Button onClick={() => setCreating(true)}>Open account</Button>}
+        toolbar={
+          <Toolbar>
+            <SearchInput value={search} onChange={setSearch} placeholder="Search number or holder" />
+            <FilterSelect label="Status" value={status} onChange={setStatus} options={STATUS_OPTIONS} />
+            <FilterSelect label="Type" value={type} onChange={setType} options={TYPE_OPTIONS} />
+            <ClearFilters
+              show={filtered}
+              onClear={() => {
+                setSearch('')
+                setStatus('')
+                setType('')
+              }}
+            />
+          </Toolbar>
         }
       >
-        {accounts.loading ? (
-          <RowSkeletons count={3} />
-        ) : list.length === 0 ? (
-          <EmptyState
-            icon={<IconAccounts className="h-6 w-6" />}
-            title={canOpen ? 'No accounts opened yet' : 'No accounts yet'}
-            description={
-              canOpen
-                ? 'Open the first account to start recording deposits and transfers against it.'
-                : 'Once a teller opens an account in your name it will appear here.'
-            }
-            action={canOpen && <Button variant="filled" onClick={() => setSheetOpen(true)}>Open account</Button>}
-          />
-        ) : (
-          list.map((account) => (
-            <ListRow
-              key={account.id}
-              to={`/accounts/${account.id}`}
-              leading={
-                <Glyph tone={account.accountType === 'SAVINGS' ? 'indigo' : 'blue'}>
-                  <IconAccounts className="h-[18px] w-[18px]" />
-                </Glyph>
-              }
-              title={
-                <span className="flex items-center gap-2">
-                  {titleCase(account.accountType)}
-                  {account.status !== 'ACTIVE' && <Badge>{account.status}</Badge>}
-                </span>
-              }
-              subtitle={
-                isStaff
-                  ? `${formatAccountNumber(account.accountNumber)} · ${account.ownerUsername ?? '—'}`
-                  : formatAccountNumber(account.accountNumber)
-              }
-              value={<span className="t-money">{formatMinorUnits(account.balanceMinorUnits, account.currency)}</span>}
-            />
-          ))
-        )}
-      </ListSection>
+        <AsyncSection
+          data={accounts.data}
+          loading={accounts.loading}
+          error={accounts.error}
+          onRetry={accounts.reload}
+          skeleton={<TableSkeleton rows={6} columns={5} />}
+        >
+          {() => (
+            <>
+              <DataTable
+                caption="Accounts"
+                columns={columns}
+                rows={rows}
+                rowKey={(row) => row.id}
+                onOpenRow={(row) => navigate(`/accounts/${row.id}`)}
+                emptyState={
+                  <EmptyState
+                    title={filtered ? 'No accounts match those filters' : 'No accounts yet'}
+                    description={
+                      filtered
+                        ? 'Clear the filters to see the full register.'
+                        : canOpen
+                          ? 'Open the first account to start recording deposits and transfers against it.'
+                          : 'Once a teller opens an account in your name it will appear here.'
+                    }
+                    action={
+                      !filtered && canOpen ? (
+                        <Button variant="primary" onClick={() => setCreating(true)}>
+                          Open account
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                }
+                footer={
+                  <p className="t-micro">
+                    {rows.length.toLocaleString()} {rows.length === 1 ? 'account' : 'accounts'}
+                  </p>
+                }
+              />
+              {isStaff && rows.length > 0 && (
+                <p className="t-body mt-3 max-w-[70ch] text-ink-3">
+                  The institution’s own cash vault is not listed here. It exists as the counterparty
+                  that keeps deposits and withdrawals balanced, which is why every balance above
+                  sums to exactly zero against it.
+                </p>
+              )}
+            </>
+          )}
+        </AsyncSection>
+      </PageLayout>
 
-      <OpenAccountSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
+      <OpenAccountModal
+        open={creating}
+        onClose={() => setCreating(false)}
         onCreated={() => {
-          setSheetOpen(false)
+          setCreating(false)
           accounts.reload()
         }}
       />
-    </div>
+    </>
   )
 }
 
-function OpenAccountSheet({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+function OpenAccountModal({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean
+  onClose: () => void
+  onCreated: () => void
+}) {
   const { notify } = useToast()
-  // Only fetched while the sheet is open; no reason to pull the full user list
-  // on every visit to the accounts screen.
+  // Fetched only while open; no reason to pull the full user list on every
+  // visit to the accounts screen.
   const users = useAsync(() => (open ? usersApi.list() : Promise.resolve([])), [open])
   const [ownerUserId, setOwnerUserId] = useState('')
   const [accountType, setAccountType] = useState('CHECKING')
@@ -123,8 +235,12 @@ function OpenAccountSheet({ open, onClose, onCreated }: { open: boolean; onClose
     setError(null)
     setSubmitting(true)
     try {
-      const account = await accountsApi.create({ ownerUserId: Number(ownerUserId), accountType, currency })
-      notify(`Account ···· ${account.accountNumber.slice(-4)} opened`, 'success')
+      const account = await accountsApi.create({
+        ownerUserId: Number(ownerUserId),
+        accountType,
+        currency,
+      })
+      notify(`Account ····${account.accountNumber.slice(-4)} opened`, 'success')
       setOwnerUserId('')
       onCreated()
     } catch (err) {
@@ -135,7 +251,7 @@ function OpenAccountSheet({ open, onClose, onCreated }: { open: boolean; onClose
   }
 
   return (
-    <Sheet
+    <Modal
       open={open}
       onClose={onClose}
       title="Open an account"
@@ -144,37 +260,53 @@ function OpenAccountSheet({ open, onClose, onCreated }: { open: boolean; onClose
       onConfirm={() => submit()}
       confirmLoading={submitting}
     >
-      <form onSubmit={submit} className="space-y-4 pb-2">
-        {error && <ErrorState message={error} />}
-        {/* A picker, not a raw id field -- nobody knows a customer's numeric
+      <form onSubmit={submit} noValidate>
+        {error && (
+          <div className="mb-4">
+            <ErrorState message={error} />
+          </div>
+        )}
+        {/* A picker, not a raw id field: nobody knows a customer's numeric
             primary key, and asking for one guarantees mistyped accounts. */}
-        <SelectInput
-          label="Account holder"
-          value={ownerUserId}
-          onChange={(e) => setOwnerUserId(e.target.value)}
-          disabled={users.loading}
-          required
-        >
-          <option value="">{users.loading ? 'Loading…' : 'Choose a customer'}</option>
-          {customers.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.username} · {u.email}
-            </option>
-          ))}
-        </SelectInput>
+        <Field label="Account holder">
+          {(id) => (
+            <Select
+              id={id}
+              value={ownerUserId}
+              onChange={(e) => setOwnerUserId(e.target.value)}
+              disabled={users.loading}
+              required
+            >
+              <option value="">{users.loading ? 'Loading…' : 'Choose a customer'}</option>
+              {customers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.username} · {u.email}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
 
-        <SelectInput label="Type" value={accountType} onChange={(e) => setAccountType(e.target.value)}>
-          <option value="CHECKING">Checking</option>
-          <option value="SAVINGS">Savings</option>
-        </SelectInput>
+        <Field label="Type">
+          {(id) => (
+            <Select id={id} value={accountType} onChange={(e) => setAccountType(e.target.value)}>
+              <option value="CHECKING">Checking</option>
+              <option value="SAVINGS">Savings</option>
+            </Select>
+          )}
+        </Field>
 
-        <SelectInput label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-          <option value="USD">USD — US Dollar</option>
-          <option value="EUR">EUR — Euro</option>
-          <option value="GBP">GBP — Pound Sterling</option>
-          <option value="INR">INR — Indian Rupee</option>
-        </SelectInput>
+        <Field label="Currency">
+          {(id) => (
+            <Select id={id} value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              <option value="USD">USD — US Dollar</option>
+              <option value="EUR">EUR — Euro</option>
+              <option value="GBP">GBP — Pound Sterling</option>
+              <option value="INR">INR — Indian Rupee</option>
+            </Select>
+          )}
+        </Field>
       </form>
-    </Sheet>
+    </Modal>
   )
 }

@@ -3,9 +3,14 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { extractErrorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { Button } from '../components/ui/Button'
-import { TextInput } from '../components/ui/Field'
-import { ErrorState } from '../components/ui/Surface'
+import { Field, TextInput } from '../components/ui/Field'
+import { ErrorState } from '../components/ui/States'
 
+/**
+ * Sign-in. A narrow column on the canvas, with the form's own rules doing the
+ * containing — no floating card, because a card here would be a box drawn
+ * around the only thing on the screen.
+ */
 export function LoginPage() {
   const { user, login } = useAuth()
   const navigate = useNavigate()
@@ -31,56 +36,57 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--bg-grouped)] px-5 py-12">
-      <div className="w-full max-w-[22rem]">
-        <div className="mb-9 flex flex-col items-center text-center">
-          <div className="mb-5 flex h-[60px] w-[60px] items-center justify-center rounded-[15px] bg-[var(--blue)] text-[30px] font-bold text-white shadow-[var(--shadow-raised)]">
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-6 py-12">
+      <div className="w-full max-w-[320px]">
+        <div className="mb-8 flex items-center gap-2.5">
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-ink text-[14px] font-semibold text-ink-inverse">
             P
-          </div>
-          <h1 className="t-title1 text-[var(--label)]">Sign in to Penny</h1>
-          <p className="t-subhead mt-2 text-[var(--label-secondary)]">Internal transaction ledger</p>
+          </span>
+          <span className="text-[17px] font-semibold tracking-[-0.015em] text-ink">Penny</span>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-          {error && <ErrorState message={error} />}
+        <h1 className="t-page mb-1 text-ink">Sign in</h1>
+        <p className="t-body mb-7 text-ink-2">
+          A double-entry ledger for the people who keep the books.
+        </p>
 
-          <div className="list-group">
-            <div className="list-row list-row-inset relative px-4 py-2.5">
+        <form onSubmit={handleSubmit} noValidate>
+          {error && (
+            <div className="mb-5">
+              <ErrorState message={error} />
+            </div>
+          )}
+
+          <Field label="Username">
+            {(id) => (
               <TextInput
-                label="Username"
-                hideLabel
-                placeholder="Username"
+                id={id}
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(event) => setUsername(event.target.value)}
                 autoComplete="username"
                 autoFocus
                 required
-                className="bg-transparent px-0 focus:bg-transparent focus:shadow-none"
               />
-            </div>
-            <div className="list-row list-row-inset relative px-4 py-2.5">
+            )}
+          </Field>
+
+          <Field label="Password">
+            {(id) => (
               <TextInput
-                label="Password"
-                hideLabel
-                placeholder="Password"
+                id={id}
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(event) => setPassword(event.target.value)}
                 autoComplete="current-password"
                 required
-                className="bg-transparent px-0 focus:bg-transparent focus:shadow-none"
               />
-            </div>
-          </div>
+            )}
+          </Field>
 
-          <Button type="submit" variant="filled" size="lg" fullWidth loading={submitting}>
-            {submitting ? 'Signing in' : 'Sign in'}
+          <Button type="submit" variant="primary" size="lg" fullWidth loading={submitting} className="mt-2">
+            Sign in
           </Button>
         </form>
-
-        <p className="t-footnote mt-6 text-center text-[var(--label-tertiary)]">
-          Accounts are issued by an administrator. There is no self-service signup.
-        </p>
       </div>
     </div>
   )

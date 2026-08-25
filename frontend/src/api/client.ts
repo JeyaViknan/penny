@@ -4,7 +4,34 @@ import { clearTokens, getAccessToken, getRefreshToken, setTokens } from './token
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
 
-export const apiClient = axios.create({ baseURL: API_BASE_URL })
+/**
+ * Repeated query parameters, not bracketed ones.
+ *
+ * <p>Axios defaults to `type[]=TRANSFER&type[]=DEPOSIT`, which Spring binds to
+ * a parameter named "type[]" and therefore silently ignores -- the request
+ * succeeds and the filter does nothing, which is worse than an error. Spring
+ * expects `type=TRANSFER&type=DEPOSIT`. Undefined and empty values are dropped
+ * so an unset filter does not become `q=` and match on the empty string.
+ */
+function serializeParams(params: Record<string, unknown>): string {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item !== undefined && item !== null && item !== '') search.append(key, String(item))
+      }
+    } else {
+      search.append(key, String(value))
+    }
+  }
+  return search.toString()
+}
+
+export const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  paramsSerializer: serializeParams,
+})
 
 apiClient.interceptors.request.use((config) => {
   const token = getAccessToken()
