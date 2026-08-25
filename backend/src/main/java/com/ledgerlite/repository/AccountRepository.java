@@ -16,6 +16,14 @@ public interface AccountRepository extends CrudRepository<Account, Long> {
     List<Account> findByOwnerUserId(Long ownerUserId);
 
     /**
+     * Customer-facing accounts only. The cash vault is an implementation
+     * detail of the deposit/withdrawal path and must never appear in account
+     * pickers or balance summaries.
+     */
+    @Query("SELECT * FROM accounts WHERE account_type <> 'SYSTEM' ORDER BY id")
+    List<Account> findAllCustomerAccounts();
+
+    /**
      * Pessimistic lock used by {@code TransferService} to serialize concurrent
      * transfers touching the same account. Callers must always lock accounts
      * in ascending id order across a transfer's two accounts to avoid

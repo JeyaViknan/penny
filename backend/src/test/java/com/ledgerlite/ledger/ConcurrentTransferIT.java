@@ -4,17 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ledgerlite.AbstractIntegrationTest;
 import com.ledgerlite.domain.Account;
-import com.ledgerlite.domain.AccountType;
-import com.ledgerlite.domain.LedgerEntry;
 import com.ledgerlite.domain.Role;
-import com.ledgerlite.domain.Transaction;
 import com.ledgerlite.domain.User;
 import com.ledgerlite.dto.TransferRequest;
 import com.ledgerlite.exception.InsufficientBalanceException;
-import com.ledgerlite.repository.AccountRepository;
-import com.ledgerlite.repository.LedgerEntryRepository;
-import com.ledgerlite.repository.TransactionRepository;
-import com.ledgerlite.repository.UserRepository;
+import com.ledgerlite.support.LedgerFixture;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -48,28 +42,15 @@ class ConcurrentTransferIT extends AbstractIntegrationTest {
     @Autowired
     private LedgerService ledgerService;
     @Autowired
-    private UserRepository userRepository;
-    @Autowired
-    private AccountRepository accountRepository;
-    @Autowired
-    private TransactionRepository transactionRepository;
-    @Autowired
-    private LedgerEntryRepository ledgerEntryRepository;
+    private LedgerFixture fixture;
 
     @Test
     void fiftyConcurrentTransfersNeverDriveBalanceNegative() throws Exception {
-        User teller = userRepository.findByUsername("concurrency-teller")
-                .orElseGet(() -> userRepository.save(User.newUser(
-                        "concurrency-teller", "concurrency-teller@ledgerlite.local", "unused-hash", Role.TELLER)));
-        User owner = userRepository.findByUsername("concurrency-owner")
-                .orElseGet(() -> userRepository.save(User.newUser(
-                        "concurrency-owner", "concurrency-owner@ledgerlite.local", "unused-hash", Role.CUSTOMER)));
+        User teller = fixture.user("concurrency-teller", Role.TELLER);
+        User owner = fixture.user("concurrency-owner", Role.CUSTOMER);
 
-        Account source = openAccount(owner.id(), "CC" + System.nanoTime());
-        Transaction seedTx = transactionRepository.save(Transaction.newTransaction("opening balance", teller.id()));
-        ledgerEntryRepository.save(LedgerEntry.credit(seedTx.id(), source.id(), OPENING_BALANCE));
-
-        Account destination = openAccount(owner.id(), "CD" + System.nanoTime());
+        Account source = fixture.fundedAccount(owner.id(), OPENING_BALANCE);
+        Account destination = fixture.account(owner.id());
 
         ExecutorService pool = Executors.newFixedThreadPool(CONCURRENT_REQUESTS);
         CountDownLatch startLine = new CountDownLatch(1);
@@ -105,10 +86,6 @@ class ConcurrentTransferIT extends AbstractIntegrationTest {
         assertThat(rejectedForInsufficientBalance.get()).isEqualTo(CONCURRENT_REQUESTS - 10);
         assertThat(ledgerService.getBalance(source.id())).isZero();
         assertThat(ledgerService.getBalance(destination.id())).isEqualTo(10 * TRANSFER_AMOUNT);
-    }
-
-    private Account openAccount(Long ownerId, String accountNumber) {
-        return accountRepository.save(Account.newAccount(accountNumber.substring(0, 12), ownerId, AccountType.CHECKING, "USD"));
     }
 
     /**

@@ -48,6 +48,16 @@ public class UserService {
         return StreamSupport.stream(userRepository.findAll().spliterator(), false).toList();
     }
 
+    /**
+     * Batch lookup used when rendering lists, so a list of N accounts costs one
+     * query for owners rather than N. Unrestricted for the same reason as
+     * {@link #getById} -- it only ever supplies display names for records the
+     * caller has already been authorized to see.
+     */
+    public List<User> getAllByIds(List<Long> ids) {
+        return StreamSupport.stream(userRepository.findAllById(ids).spliterator(), false).toList();
+    }
+
     /** Unrestricted: used internally (e.g. token refresh, FK existence checks) where there is no end-user request to authorize. */
     public User getById(Long id) {
         return userRepository.findById(id)

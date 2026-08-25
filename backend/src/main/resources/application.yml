@@ -23,6 +23,12 @@ ledgerlite:
     secret: ${JWT_SECRET:CHANGE_ME_IN_PRODUCTION_THIS_MUST_BE_AT_LEAST_256_BITS_LONG}
     access-token-ttl-minutes: ${JWT_ACCESS_TTL_MINUTES:15}
     refresh-token-ttl-days: ${JWT_REFRESH_TTL_DAYS:7}
+  # Counterparty for deposits and withdrawals. Seeded by migration V6; see
+  # CashService for why money entering the ledger still needs two legs.
+  vault-account-number: ${VAULT_ACCOUNT_NUMBER:000000000001}
+  pagination:
+    default-page-size: 25
+    max-page-size: 100
 
 springdoc:
   swagger-ui:

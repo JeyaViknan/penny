@@ -9,21 +9,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ledgerlite.AbstractIntegrationTest;
 import com.ledgerlite.domain.Account;
 import com.ledgerlite.domain.AccountType;
-import com.ledgerlite.domain.LedgerEntry;
 import com.ledgerlite.domain.Role;
-import com.ledgerlite.domain.Transaction;
 import com.ledgerlite.domain.User;
+import com.ledgerlite.dto.CashRequest;
 import com.ledgerlite.dto.CreateAccountRequest;
 import com.ledgerlite.dto.LoginRequest;
-import com.ledgerlite.repository.AccountRepository;
-import com.ledgerlite.repository.LedgerEntryRepository;
-import com.ledgerlite.repository.TransactionRepository;
-import com.ledgerlite.repository.UserRepository;
+import com.ledgerlite.support.LedgerFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 class AccountControllerIT extends AbstractIntegrationTest {
@@ -31,15 +26,7 @@ class AccountControllerIT extends AbstractIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
     @Autowired
-    private UserRepository userRepository;
-    @Autowired
-    private AccountRepository accountRepository;
-    @Autowired
-    private TransactionRepository transactionRepository;
-    @Autowired
-    private LedgerEntryRepository ledgerEntryRepository;
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    private LedgerFixture fixture;
     @Autowired
     private ObjectMapper objectMapper;
 
@@ -48,12 +35,8 @@ class AccountControllerIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void seed() {
-        teller = userRepository.findByUsername("teller1")
-                .orElseGet(() -> userRepository.save(User.newUser(
-                        "teller1", "teller1@ledgerlite.local", passwordEncoder.encode("Password123!"), Role.TELLER)));
-        customer = userRepository.findByUsername("customer1")
-                .orElseGet(() -> userRepository.save(User.newUser(
-                        "customer1", "customer1@ledgerlite.local", passwordEncoder.encode("Password123!"), Role.CUSTOMER)));
+        teller = fixture.user("teller1", Role.TELLER);
+        customer = fixture.user("customer1", Role.CUSTOMER);
     }
 
     @Test
@@ -85,13 +68,16 @@ class AccountControllerIT extends AbstractIntegrationTest {
 
     @Test
     void balanceIsDerivedFromLedgerEntriesNotStored() throws Exception {
-        Account account = accountRepository.save(
-                Account.newAccount("999900001111", customer.id(), AccountType.CHECKING, "USD"));
-        Transaction transaction = transactionRepository.save(Transaction.newTransaction("seed", teller.id()));
-        ledgerEntryRepository.save(LedgerEntry.credit(transaction.id(), account.id(), 10_000));
-        ledgerEntryRepository.save(LedgerEntry.debit(transaction.id(), account.id(), 2_500));
-
+        // A deposit then a withdrawal leaves two entries on the account and a
+        // balance that exists only as their difference -- there is no stored
+        // balance column that could disagree.
+        Account account = fixture.fundedAccount(customer.id(), 10_000);
         String token = accessTokenFor("teller1", "Password123!");
+        mockMvc.perform(post("/accounts/" + account.id() + "/withdraw")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new CashRequest(2_500L, "atm"))))
+                .andExpect(status().isOk());
 
         mockMvc.perform(get("/accounts/" + account.id()).header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
@@ -104,10 +90,8 @@ class AccountControllerIT extends AbstractIntegrationTest {
 
     @Test
     void customerCanReadOwnAccountButNotOthers() throws Exception {
-        Account own = accountRepository.save(
-                Account.newAccount("999900002222", customer.id(), AccountType.SAVINGS, "USD"));
-        Account other = accountRepository.save(
-                Account.newAccount("999900003333", teller.id(), AccountType.SAVINGS, "USD"));
+        Account own = fixture.account(customer.id(), AccountType.SAVINGS);
+        Account other = fixture.account(teller.id(), AccountType.SAVINGS);
 
         String token = accessTokenFor("customer1", "Password123!");
 
@@ -120,8 +104,8 @@ class AccountControllerIT extends AbstractIntegrationTest {
 
     @Test
     void customerListingAccountsSeesOnlyOwnAccounts() throws Exception {
-        accountRepository.save(Account.newAccount("999900004444", customer.id(), AccountType.CHECKING, "USD"));
-        accountRepository.save(Account.newAccount("999900005555", teller.id(), AccountType.CHECKING, "USD"));
+        fixture.account(customer.id(), AccountType.CHECKING);
+        fixture.account(teller.id(), AccountType.CHECKING);
 
         String token = accessTokenFor("customer1", "Password123!");
 

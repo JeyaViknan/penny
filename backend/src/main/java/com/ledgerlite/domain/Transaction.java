@@ -14,15 +14,16 @@ import org.springframework.data.relational.core.mapping.Table;
 public record Transaction(
         @Id Long id,
         String reference,
+        TransactionType transactionType,
         Long initiatedByUserId,
         Instant createdAt
 ) {
 
-    public static Transaction newTransaction(String reference, Long initiatedByUserId) {
-        return new Transaction(null, reference, initiatedByUserId, Instant.now());
+    public static Transaction newTransaction(String reference, TransactionType type, Long initiatedByUserId) {
+        return new Transaction(null, reference, type, initiatedByUserId, Instant.now());
     }
 
     public Transaction withId(Long id) {
-        return new Transaction(id, reference, initiatedByUserId, createdAt);
+        return new Transaction(id, reference, transactionType, initiatedByUserId, createdAt);
     }
 }

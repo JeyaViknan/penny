@@ -1,8 +1,11 @@
 package com.ledgerlite.controller;
 
 import com.ledgerlite.dto.LedgerEntryResponse;
+import com.ledgerlite.dto.LedgerIntegrityResponse;
+import com.ledgerlite.ledger.LedgerIntegrityService;
 import com.ledgerlite.ledger.LedgerService;
 import com.ledgerlite.mapper.LedgerMapper;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
@@ -18,11 +21,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class LedgerController {
 
     private final LedgerService ledgerService;
+    private final LedgerIntegrityService ledgerIntegrityService;
     private final LedgerMapper ledgerMapper;
 
-    public LedgerController(LedgerService ledgerService, LedgerMapper ledgerMapper) {
+    public LedgerController(LedgerService ledgerService,
+                             LedgerIntegrityService ledgerIntegrityService,
+                             LedgerMapper ledgerMapper) {
         this.ledgerService = ledgerService;
+        this.ledgerIntegrityService = ledgerIntegrityService;
         this.ledgerMapper = ledgerMapper;
+    }
+
+    @GetMapping("/integrity")
+    @Operation(summary = "Re-derive ledger totals from raw entries and assert the books balance")
+    public ResponseEntity<LedgerIntegrityResponse> integrity() {
+        return ResponseEntity.ok(ledgerIntegrityService.check());
     }
 
     @GetMapping("/{accountId}")

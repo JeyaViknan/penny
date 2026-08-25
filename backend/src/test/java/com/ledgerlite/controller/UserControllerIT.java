@@ -2,6 +2,7 @@ package com.ledgerlite.controller;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,6 +28,8 @@ class UserControllerIT extends AbstractIntegrationTest {
     private PasswordEncoder passwordEncoder;
     @Autowired
     private ObjectMapper objectMapper;
+    @Autowired
+    private com.ledgerlite.support.LedgerFixture fixture;
 
     private User customerA;
     private User customerB;
@@ -62,5 +65,55 @@ class UserControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
+    }
+
+    @Test
+    void adminCanCreateUsersAndListThem() throws Exception {
+        String admin = tokenFor(fixture.user("users-admin", com.ledgerlite.domain.Role.ADMIN).username());
+        String username = "created-" + System.nanoTime();
+
+        mockMvc.perform(post("/users")
+                        .header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new com.ledgerlite.dto.CreateUserRequest(
+                                username, username + "@ledgerlite.test", "Password123!", com.ledgerlite.domain.Role.CUSTOMER))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value(username))
+                .andExpect(jsonPath("$.role").value("CUSTOMER"));
+
+        mockMvc.perform(get("/users").header("Authorization", "Bearer " + admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.username == '" + username + "')]").isNotEmpty());
+    }
+
+    @Test
+    void duplicateUsernameIsRejected() throws Exception {
+        String admin = tokenFor(fixture.user("users-admin", com.ledgerlite.domain.Role.ADMIN).username());
+        String username = "dupe-" + System.nanoTime();
+        var body = new com.ledgerlite.dto.CreateUserRequest(
+                username, username + "@ledgerlite.test", "Password123!", com.ledgerlite.domain.Role.CUSTOMER);
+
+        mockMvc.perform(post("/users").header("Authorization", "Bearer " + admin)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body))).andExpect(status().isCreated());
+
+        mockMvc.perform(post("/users").header("Authorization", "Bearer " + admin)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body))).andExpect(status().isConflict());
+    }
+
+    @Test
+    void invalidUserPayloadReportsFieldErrors() throws Exception {
+        String admin = tokenFor(fixture.user("users-admin", com.ledgerlite.domain.Role.ADMIN).username());
+
+        mockMvc.perform(post("/users").header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"x\",\"email\":\"not-an-email\",\"password\":\"short\",\"role\":\"CUSTOMER\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.length()").value(3));
+    }
+
+    private String tokenFor(String username) throws Exception {
+        return accessTokenFor(username, com.ledgerlite.support.LedgerFixture.PASSWORD);
     }
 }

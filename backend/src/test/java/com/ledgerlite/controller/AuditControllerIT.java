@@ -8,22 +8,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ledgerlite.AbstractIntegrationTest;
 import com.ledgerlite.domain.Account;
-import com.ledgerlite.domain.AccountType;
-import com.ledgerlite.domain.LedgerEntry;
 import com.ledgerlite.domain.Role;
-import com.ledgerlite.domain.Transaction;
 import com.ledgerlite.domain.User;
 import com.ledgerlite.dto.LoginRequest;
 import com.ledgerlite.dto.TransferRequest;
-import com.ledgerlite.repository.AccountRepository;
-import com.ledgerlite.repository.LedgerEntryRepository;
-import com.ledgerlite.repository.TransactionRepository;
-import com.ledgerlite.repository.UserRepository;
+import com.ledgerlite.support.LedgerFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 class AuditControllerIT extends AbstractIntegrationTest {
@@ -31,15 +24,7 @@ class AuditControllerIT extends AbstractIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
     @Autowired
-    private UserRepository userRepository;
-    @Autowired
-    private AccountRepository accountRepository;
-    @Autowired
-    private TransactionRepository transactionRepository;
-    @Autowired
-    private LedgerEntryRepository ledgerEntryRepository;
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    private LedgerFixture fixture;
     @Autowired
     private ObjectMapper objectMapper;
 
@@ -49,15 +34,9 @@ class AuditControllerIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void seed() {
-        teller = userRepository.findByUsername("audit-teller")
-                .orElseGet(() -> userRepository.save(User.newUser(
-                        "audit-teller", "audit-teller@ledgerlite.local", passwordEncoder.encode("Password123!"), Role.TELLER)));
-        auditor = userRepository.findByUsername("audit-auditor")
-                .orElseGet(() -> userRepository.save(User.newUser(
-                        "audit-auditor", "audit-auditor@ledgerlite.local", passwordEncoder.encode("Password123!"), Role.AUDITOR)));
-        customer = userRepository.findByUsername("audit-customer")
-                .orElseGet(() -> userRepository.save(User.newUser(
-                        "audit-customer", "audit-customer@ledgerlite.local", passwordEncoder.encode("Password123!"), Role.CUSTOMER)));
+        teller = fixture.user("audit-teller", Role.TELLER);
+        auditor = fixture.user("audit-auditor", Role.AUDITOR);
+        customer = fixture.user("audit-customer", Role.CUSTOMER);
     }
 
     @Test
@@ -97,15 +76,11 @@ class AuditControllerIT extends AbstractIntegrationTest {
     }
 
     private Account fundedAccount(long openingBalanceMinorUnits) {
-        Account account = openAccount();
-        Transaction seedTx = transactionRepository.save(Transaction.newTransaction("opening balance", teller.id()));
-        ledgerEntryRepository.save(LedgerEntry.credit(seedTx.id(), account.id(), openingBalanceMinorUnits));
-        return account;
+        return fixture.fundedAccount(customer.id(), openingBalanceMinorUnits);
     }
 
     private Account openAccount() {
-        String accountNumber = ("AU" + System.nanoTime()).substring(0, 12);
-        return accountRepository.save(Account.newAccount(accountNumber, customer.id(), AccountType.CHECKING, "USD"));
+        return fixture.account(customer.id());
     }
 
     private String accessTokenFor(String username, String password) throws Exception {

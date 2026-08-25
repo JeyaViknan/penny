@@ -1,23 +1,36 @@
 package com.ledgerlite.controller;
 
+import com.ledgerlite.domain.Account;
 import com.ledgerlite.domain.Role;
+import com.ledgerlite.domain.User;
 import com.ledgerlite.dto.AccountResponse;
+import com.ledgerlite.dto.CashRequest;
+import com.ledgerlite.dto.CashResponse;
+import com.ledgerlite.dto.ChangeAccountStatusRequest;
 import com.ledgerlite.dto.CreateAccountRequest;
+import com.ledgerlite.ledger.CashService;
 import com.ledgerlite.ledger.LedgerService;
 import com.ledgerlite.mapper.AccountMapper;
 import com.ledgerlite.security.UserPrincipal;
 import com.ledgerlite.service.AccountService;
+import com.ledgerlite.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,30 +41,40 @@ public class AccountController {
 
     private final AccountService accountService;
     private final LedgerService ledgerService;
+    private final CashService cashService;
+    private final UserService userService;
     private final AccountMapper accountMapper;
 
-    public AccountController(AccountService accountService, LedgerService ledgerService, AccountMapper accountMapper) {
+    public AccountController(AccountService accountService,
+                              LedgerService ledgerService,
+                              CashService cashService,
+                              UserService userService,
+                              AccountMapper accountMapper) {
         this.accountService = accountService;
         this.ledgerService = ledgerService;
+        this.cashService = cashService;
+        this.userService = userService;
         this.accountMapper = accountMapper;
     }
 
     @PostMapping
+    @Operation(summary = "Open a new account for a customer")
     public ResponseEntity<AccountResponse> createAccount(@Valid @RequestBody CreateAccountRequest request) {
-        var account = accountService.createAccount(request);
-        var response = accountMapper.toResponse(account, ledgerService.getBalance(account.id()));
-        return ResponseEntity.created(URI.create("/accounts/" + account.id())).body(response);
+        Account account = accountService.createAccount(request);
+        return ResponseEntity.created(URI.create("/accounts/" + account.id())).body(toResponse(account));
     }
 
     @GetMapping
+    @Operation(summary = "List accounts; a CUSTOMER sees only their own")
     public ResponseEntity<List<AccountResponse>> listAccounts(@AuthenticationPrincipal UserPrincipal principal) {
-        // A CUSTOMER sees only their own accounts rather than being denied
-        // outright -- the broader roles see every account.
-        var accounts = principal.getUser().role() == Role.CUSTOMER
+        List<Account> accounts = principal.getUser().role() == Role.CUSTOMER
                 ? accountService.listForOwner(principal.getId())
                 : accountService.listAll();
-        var response = accounts.stream()
-                .map(a -> accountMapper.toResponse(a, ledgerService.getBalance(a.id())))
+
+        // Resolve every owner in one pass rather than one lookup per account.
+        Map<Long, String> usernames = usernamesFor(accounts);
+        List<AccountResponse> response = accounts.stream()
+                .map(a -> accountMapper.toResponse(a, ledgerService.getBalance(a.id()), usernames.get(a.ownerUserId())))
                 .toList();
         return ResponseEntity.ok(response);
     }
@@ -59,8 +82,47 @@ public class AccountController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'AUDITOR', 'TELLER') or @accountAccessGuard.isOwner(#id, authentication)")
     public ResponseEntity<AccountResponse> getAccount(@PathVariable Long id) {
-        var account = accountService.getById(id);
-        var response = accountMapper.toResponse(account, ledgerService.getBalance(account.id()));
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(toResponse(accountService.getById(id)));
+    }
+
+    @PatchMapping("/{id}/status")
+    @Operation(summary = "Freeze, reactivate, or close an account (ADMIN only)")
+    public ResponseEntity<AccountResponse> changeStatus(@PathVariable Long id,
+                                                          @Valid @RequestBody ChangeAccountStatusRequest request) {
+        return ResponseEntity.ok(toResponse(accountService.changeStatus(id, request.status())));
+    }
+
+    @PostMapping("/{id}/deposit")
+    @Operation(summary = "Deposit cash into an account (debits the cash vault)")
+    public ResponseEntity<CashResponse> deposit(@PathVariable Long id,
+                                                  @Valid @RequestBody CashRequest request,
+                                                  @AuthenticationPrincipal UserPrincipal principal,
+                                                  @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        return ResponseEntity.ok(cashService.deposit(id, request, principal.getId(), idempotencyKey));
+    }
+
+    @PostMapping("/{id}/withdraw")
+    @Operation(summary = "Withdraw cash from an account (credits the cash vault)")
+    public ResponseEntity<CashResponse> withdraw(@PathVariable Long id,
+                                                   @Valid @RequestBody CashRequest request,
+                                                   @AuthenticationPrincipal UserPrincipal principal,
+                                                   @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        return ResponseEntity.ok(cashService.withdraw(id, request, principal.getId(), idempotencyKey));
+    }
+
+    private AccountResponse toResponse(Account account) {
+        String ownerUsername = account.ownerUserId() == null
+                ? null
+                : userService.getById(account.ownerUserId()).username();
+        return accountMapper.toResponse(account, ledgerService.getBalance(account.id()), ownerUsername);
+    }
+
+    private Map<Long, String> usernamesFor(List<Account> accounts) {
+        List<Long> ownerIds = accounts.stream().map(Account::ownerUserId).filter(java.util.Objects::nonNull).distinct().toList();
+        if (ownerIds.isEmpty()) {
+            return Map.of();
+        }
+        return userService.getAllByIds(ownerIds).stream()
+                .collect(Collectors.toMap(User::id, User::username, (a, b) -> a));
     }
 }

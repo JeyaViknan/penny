@@ -10,23 +10,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ledgerlite.AbstractIntegrationTest;
 import com.ledgerlite.domain.Account;
 import com.ledgerlite.domain.AccountStatus;
-import com.ledgerlite.domain.AccountType;
 import com.ledgerlite.domain.EntryType;
 import com.ledgerlite.domain.LedgerEntry;
 import com.ledgerlite.domain.Role;
-import com.ledgerlite.domain.Transaction;
 import com.ledgerlite.domain.User;
 import com.ledgerlite.dto.LoginRequest;
 import com.ledgerlite.dto.TransferRequest;
+import com.ledgerlite.support.LedgerFixture;
 import com.ledgerlite.repository.AccountRepository;
 import com.ledgerlite.repository.LedgerEntryRepository;
-import com.ledgerlite.repository.TransactionRepository;
-import com.ledgerlite.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 class TransferControllerIT extends AbstractIntegrationTest {
@@ -34,15 +30,11 @@ class TransferControllerIT extends AbstractIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
     @Autowired
-    private UserRepository userRepository;
+    private LedgerFixture fixture;
     @Autowired
     private AccountRepository accountRepository;
     @Autowired
-    private TransactionRepository transactionRepository;
-    @Autowired
     private LedgerEntryRepository ledgerEntryRepository;
-    @Autowired
-    private PasswordEncoder passwordEncoder;
     @Autowired
     private ObjectMapper objectMapper;
 
@@ -51,12 +43,8 @@ class TransferControllerIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void seed() {
-        teller = userRepository.findByUsername("xfer-teller")
-                .orElseGet(() -> userRepository.save(User.newUser(
-                        "xfer-teller", "xfer-teller@ledgerlite.local", passwordEncoder.encode("Password123!"), Role.TELLER)));
-        owner = userRepository.findByUsername("xfer-owner")
-                .orElseGet(() -> userRepository.save(User.newUser(
-                        "xfer-owner", "xfer-owner@ledgerlite.local", passwordEncoder.encode("Password123!"), Role.CUSTOMER)));
+        teller = fixture.user("xfer-teller", Role.TELLER);
+        owner = fixture.user("xfer-owner", Role.CUSTOMER);
     }
 
     @Test
@@ -120,8 +108,8 @@ class TransferControllerIT extends AbstractIntegrationTest {
     @Test
     void transferInvolvingInactiveAccountIsRejected() throws Exception {
         Account source = fundedAccount(10_000);
-        Account destination = accountRepository.save(new Account(null, "999900009999", owner.id(),
-                AccountType.CHECKING, AccountStatus.CLOSED, "USD", java.time.Instant.now()));
+        Account destination = accountRepository.save(
+                fixture.account(owner.id()).withStatus(AccountStatus.CLOSED));
         String token = accessTokenFor("xfer-teller", "Password123!");
 
         mockMvc.perform(post("/transfers")
@@ -147,17 +135,11 @@ class TransferControllerIT extends AbstractIntegrationTest {
     }
 
     private Account fundedAccount(long openingBalanceMinorUnits) {
-        Account account = openAccount(0);
-        if (openingBalanceMinorUnits > 0) {
-            Transaction seedTx = transactionRepository.save(Transaction.newTransaction("opening balance", teller.id()));
-            ledgerEntryRepository.save(LedgerEntry.credit(seedTx.id(), account.id(), openingBalanceMinorUnits));
-        }
-        return account;
+        return fixture.fundedAccount(owner.id(), openingBalanceMinorUnits);
     }
 
     private Account openAccount(long unusedOpeningBalance) {
-        String accountNumber = "TX" + System.nanoTime();
-        return accountRepository.save(Account.newAccount(accountNumber.substring(0, 12), owner.id(), AccountType.CHECKING, "USD"));
+        return fixture.account(owner.id());
     }
 
     private String accessTokenFor(String username, String password) throws Exception {

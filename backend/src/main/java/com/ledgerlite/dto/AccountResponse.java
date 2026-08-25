@@ -8,6 +8,7 @@ public record AccountResponse(
         Long id,
         String accountNumber,
         Long ownerUserId,
+        String ownerUsername,
         AccountType accountType,
         AccountStatus status,
         String currency,
