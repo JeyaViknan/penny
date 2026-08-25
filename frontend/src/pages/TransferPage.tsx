@@ -1,60 +1,73 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { accountsApi, transfersApi } from '../api/endpoints'
 import { extractErrorMessage } from '../api/client'
-import type { AccountResponse } from '../api/types'
-import { ErrorBanner, PageHeader, Panel } from '../components/Panel'
-import { formatMinorUnits } from '../lib/money'
-
-function newIdempotencyKey(): string {
-  return crypto.randomUUID()
-}
+import { accountsApi, transfersApi } from '../api/endpoints'
+import { Button } from '../components/ui/Button'
+import { SelectInput, TextInput } from '../components/ui/Field'
+import { Card, ErrorState, PageHeader, Skeleton } from '../components/ui/Surface'
+import { useToast } from '../components/ui/Toast'
+import { formatAccountNumber, formatMinorUnits, parseMajorUnits } from '../lib/money'
+import { useAsync } from '../lib/useAsync'
 
 export function TransferPage() {
   const navigate = useNavigate()
-  const [accounts, setAccounts] = useState<AccountResponse[]>([])
-  const [sourceAccountId, setSourceAccountId] = useState('')
-  const [destinationAccountId, setDestinationAccountId] = useState('')
+  const { notify } = useToast()
+  const accounts = useAsync(() => accountsApi.list(), [])
+
+  const [sourceId, setSourceId] = useState('')
+  const [destinationId, setDestinationId] = useState('')
   const [amount, setAmount] = useState('')
   const [reference, setReference] = useState('')
-  const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    accountsApi.list().then(setAccounts).catch(() => {})
-  }, [])
+  const transferable = useMemo(
+    () => (accounts.data ?? []).filter((a) => a.status === 'ACTIVE' && a.accountType !== 'SYSTEM'),
+    [accounts.data],
+  )
+  const source = transferable.find((a) => a.id === Number(sourceId))
 
-  const source = accounts.find((a) => a.id === Number(sourceAccountId))
+  // A frozen account can receive nothing and a closed one cannot transact at
+  // all, so they are filtered out of both pickers rather than offered and then
+  // rejected by the server after the user has filled in the whole form.
+  const destinations = transferable.filter((a) => a.id !== Number(sourceId))
+
+  function validate(): boolean {
+    const next: Record<string, string> = {}
+    if (!sourceId) next.source = 'Choose the account the money leaves from.'
+    if (!destinationId) next.destination = 'Choose where the money is going.'
+
+    const minorUnits = parseMajorUnits(amount)
+    if (minorUnits === null) {
+      next.amount = 'Enter an amount greater than zero, with at most two decimal places.'
+    } else if (source && minorUnits > source.balanceMinorUnits) {
+      next.amount = `Only ${formatMinorUnits(source.balanceMinorUnits, source.currency)} is available.`
+    }
+
+    if (!reference.trim()) next.reference = 'Add a reference so this transfer can be recognised later.'
+
+    setErrors(next)
+    return Object.keys(next).length === 0
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    setError(null)
-    setSuccess(null)
-
-    const amountMinorUnits = Math.round(Number(amount) * 100)
-    if (!Number.isFinite(amountMinorUnits) || amountMinorUnits <= 0) {
-      setError('Enter a valid, positive amount.')
-      return
-    }
+    setFormError(null)
+    if (!validate()) return
 
     setSubmitting(true)
     try {
-      const response = await transfersApi.create(
-        {
-          sourceAccountId: Number(sourceAccountId),
-          destinationAccountId: Number(destinationAccountId),
-          amountMinorUnits,
-          reference,
-        },
-        idempotencyKey,
-      )
-      setSuccess(`Transfer #${response.transactionId} completed.`)
-      setIdempotencyKey(newIdempotencyKey())
-      setTimeout(() => navigate(`/transfers/${response.transactionId}`), 900)
+      const result = await transfersApi.create({
+        sourceAccountId: Number(sourceId),
+        destinationAccountId: Number(destinationId),
+        amountMinorUnits: parseMajorUnits(amount)!,
+        reference: reference.trim(),
+      })
+      notify(`Sent ${formatMinorUnits(result.amountMinorUnits)}`, 'success')
+      navigate(`/transfers/${result.transactionId}`)
     } catch (err) {
-      setError(extractErrorMessage(err))
+      setFormError(extractErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -62,85 +75,97 @@ export function TransferPage() {
 
   return (
     <div className="max-w-lg">
-      <PageHeader title="Transfer money" subtitle="Move funds between two accounts. Every transfer posts a balanced debit and credit." />
-      {error && <ErrorBanner message={error} />}
-      {success && (
-        <div className="mb-4 rounded border border-[var(--color-positive)]/30 bg-[var(--color-positive-muted)] px-4 py-2.5 text-sm text-[var(--color-positive)]">
-          {success}
-        </div>
-      )}
+      <PageHeader
+        title="Send money"
+        description="Both sides of the transfer are posted together — the money is never in neither place."
+      />
 
-      <Panel>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]">From account</label>
-            <select
-              required
-              value={sourceAccountId}
-              onChange={(e) => setSourceAccountId(e.target.value)}
-              className="w-full rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+      <Card>
+        {accounts.loading ? (
+          <div className="space-y-5">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="space-y-1.5">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            {formError && <ErrorState message={formError} />}
+            {accounts.error && <ErrorState message={accounts.error} onRetry={accounts.reload} />}
+
+            <SelectInput
+              label="From"
+              value={sourceId}
+              onChange={(e) => {
+                setSourceId(e.target.value)
+                // Clearing prevents an invalid same-account pair being left
+                // behind when the source changes to match the destination.
+                if (e.target.value === destinationId) setDestinationId('')
+                setErrors((p) => ({ ...p, source: '' }))
+              }}
+              error={errors.source || undefined}
+              hint={source ? `${formatMinorUnits(source.balanceMinorUnits, source.currency)} available` : undefined}
             >
-              <option value="">Select an account…</option>
-              {accounts.map((a) => (
+              <option value="">Select an account</option>
+              {transferable.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.accountNumber} — {formatMinorUnits(a.balanceMinorUnits, a.currency)}
+                  {formatAccountNumber(a.accountNumber)} · {a.accountType} · {formatMinorUnits(a.balanceMinorUnits, a.currency)}
                 </option>
               ))}
-            </select>
-            {source && (
-              <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                Available: {formatMinorUnits(source.balanceMinorUnits, source.currency)}
-              </p>
-            )}
-          </div>
+            </SelectInput>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]">To account ID</label>
-            <input
-              required
-              value={destinationAccountId}
-              onChange={(e) => setDestinationAccountId(e.target.value)}
-              placeholder="Destination account ID"
-              className="w-full rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+            <SelectInput
+              label="To"
+              value={destinationId}
+              onChange={(e) => {
+                setDestinationId(e.target.value)
+                setErrors((p) => ({ ...p, destination: '' }))
+              }}
+              error={errors.destination || undefined}
+              disabled={!sourceId}
+              hint={!sourceId ? 'Choose the source account first.' : undefined}
+            >
+              <option value="">Select an account</option>
+              {destinations.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {formatAccountNumber(a.accountNumber)} · {a.ownerUsername ?? a.accountType}
+                </option>
+              ))}
+            </SelectInput>
+
+            <TextInput
+              label="Amount"
+              prefix="$"
+              inputMode="decimal"
+              placeholder="0.00"
+              value={amount}
+              onChange={(e) => {
+                setAmount(e.target.value)
+                setErrors((p) => ({ ...p, amount: '' }))
+              }}
+              error={errors.amount || undefined}
             />
-          </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]">Amount</label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[var(--color-text-muted)]">$</span>
-              <input
-                required
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                className="w-full rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] py-2 pl-7 pr-3 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]">Reference</label>
-            <input
-              required
-              maxLength={140}
-              value={reference}
-              onChange={(e) => setReference(e.target.value)}
+            <TextInput
+              label="Reference"
               placeholder="e.g. Rent for July"
-              className="w-full rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+              value={reference}
+              onChange={(e) => {
+                setReference(e.target.value)
+                setErrors((p) => ({ ...p, reference: '' }))
+              }}
+              error={errors.reference || undefined}
+              maxLength={140}
             />
-          </div>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded bg-[var(--color-accent)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
-          >
-            {submitting ? 'Sending…' : 'Send transfer'}
-          </button>
-        </form>
-      </Panel>
+            <Button type="submit" variant="primary" size="lg" fullWidth loading={submitting}>
+              {submitting ? 'Sending' : 'Send transfer'}
+            </Button>
+          </form>
+        )}
+      </Card>
     </div>
   )
 }

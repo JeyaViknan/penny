@@ -24,6 +24,7 @@ integration tests against PostgreSQL (no H2, no mocked database).
 - [API examples](#api-examples)
 - [Running locally](#running-locally)
 - [Docker](#docker)
+- [Design system](#design-system)
 - [Testing](#testing)
 - [CI/CD](#cicd)
 - [Deployment](#deployment)
@@ -41,10 +42,17 @@ was created or destroyed.*
 
 LedgerLite is built around the opposite constraint: **accounts never carry a
 balance column at all.** A balance is always `SUM(credits) - SUM(debits)`
-over an append-only ledger, computed by a database view. Every transfer posts
+over an append-only ledger, computed by a database view. Every posting writes
 exactly one debit and one credit of equal amount in a single transaction, so
 the invariant `total debits == total credits` holds by construction, not by a
 nightly reconciliation job.
+
+That applies to money *entering* the system too. A deposit is not a one-sided
+credit — it debits a bank-owned cash vault and credits the customer, because
+double-entry forbids a posting with a single leg. That choice buys a stronger,
+directly checkable property: **the sum of every account balance in the system
+is always exactly zero**, which is what makes "was money created anywhere?"
+answerable with one query. `GET /ledger/integrity` asserts it.
 
 ## Architecture
 
@@ -62,7 +70,7 @@ flowchart LR
         CTRL[Controllers]
         SEC[Security / JWT]
         SVC[Services]
-        LEDGER[Ledger domain<br/>TransferService, LedgerPostingService,<br/>IdempotencyService, LedgerService]
+        LEDGER[Ledger domain<br/>LedgerPostingService · PostingGuard<br/>TransferService · CashService<br/>Idempotency · Integrity]
         AUDIT[Audit aspect]
     end
 
@@ -84,7 +92,7 @@ flowchart LR
 |---|---|
 | `controller` | HTTP boundary only — binds requests, delegates, maps responses. No `if (role == ...)` here. |
 | `service` | Business orchestration for users/accounts; owns `@PreAuthorize` role checks. |
-| `ledger` | The double-entry domain: `TransferService` (validation + locking), `LedgerPostingService` (the only writer of ledger entries), `IdempotencyService`, `LedgerService` (balance/history reads). |
+| `ledger` | The double-entry domain: `LedgerPostingService` (the only writer of ledger entries), `PostingGuard` (locking + the preconditions every posting shares), `TransferService`, `CashService` (deposits/withdrawals), `IdempotencyService` + `IdempotencyClaimStore`, `TransactionHistoryService`, `LedgerIntegrityService`. |
 | `domain` | Immutable Spring Data JDBC records — no anemic setters, no Hibernate magic. |
 | `security` | JWT issuance/validation, `UserPrincipal`, `AccountAccessGuard` (ownership checks used in `@PreAuthorize` SpEL). |
 | `audit` | `@Audited` annotation + one AOP aspect that writes `audit_log` rows — declarative, not scattered through services. |
@@ -119,20 +127,22 @@ ledgerLite/
 │   │   ├── domain/         # Immutable records: User, Account, LedgerEntry, ...
 │   │   ├── dto/             # Request/response DTOs
 │   │   ├── exception/      # Typed exceptions + GlobalExceptionHandler
-│   │   ├── ledger/          # Double-entry domain: TransferService, LedgerPostingService, IdempotencyService
+│   │   ├── ledger/          # Double-entry domain: posting, locking, cash, idempotency, integrity
 │   │   ├── mapper/          # Domain <-> DTO mapping
 │   │   ├── repository/     # Spring Data JDBC repositories
 │   │   ├── security/        # JWT, filters, UserPrincipal, AccountAccessGuard
 │   │   └── service/         # UserService, AccountService, AuthService
-│   ├── src/main/resources/db/migration/  # Flyway migrations V1-V5
+│   ├── src/main/resources/db/migration/  # Flyway migrations V1-V6
 │   └── src/test/java/com/ledgerlite/     # Unit + Testcontainers integration tests
 ├── frontend/
 │   └── src/
 │       ├── api/             # axios client, JWT refresh interceptor, endpoints, types
 │       ├── auth/             # AuthContext, route guards
-│       ├── components/      # Shared UI primitives
-│       ├── lib/               # Money/date formatting
-│       └── pages/            # Login, Dashboard, Accounts, Transfer, Audit, ...
+│       ├── components/ui/   # Design-system primitives (Button, Field, DataTable, Modal, Toast...)
+│       ├── theme/            # Light/dark/system theme context
+│       ├── lib/              # Money parsing + formatting, useAsync, cn
+│       └── pages/            # Login, Overview, Accounts, Activity, Transfer, People, Audit
+├── scripts/seed-demo.sh      # Seeds demo data through the public API (no SQL)
 ├── .github/workflows/ci.yml
 ├── docker-compose.yml
 └── README.md
@@ -161,14 +171,16 @@ erDiagram
     accounts {
         bigint id PK
         varchar account_number
-        bigint owner_user_id FK
-        varchar account_type
-        varchar status
+        bigint owner_user_id FK "null for SYSTEM"
+        varchar account_type "CHECKING SAVINGS SYSTEM"
+        varchar status "ACTIVE INACTIVE CLOSED"
         varchar currency
+        boolean allow_negative_balance
     }
     transactions {
         bigint id PK
         varchar reference
+        varchar transaction_type "TRANSFER DEPOSIT WITHDRAWAL"
         bigint initiated_by_user_id FK
     }
     ledger_entries {
@@ -229,6 +241,9 @@ Money is always `BIGINT` minor units (cents/paise) — never `float`/`double`.
 | A request retried with the same `Idempotency-Key` never moves money twice | The key claim runs on a Postgres **SAVEPOINT** (`Propagation.NESTED`) inside the transfer's own transaction — the claim and the ledger postings commit or roll back together atomically. |
 | The ledger can't be edited or deleted after the fact | `ledger_entries` and `audit_log` reject `UPDATE`/`DELETE` via DB triggers. |
 | Every state-changing action is attributable | `@Audited` + one AOP aspect records actor, action, entity, request ID, and IP for every write, in the same transaction as the change. |
+| Money cannot be created or destroyed | Deposits and withdrawals post against a bank-owned cash vault rather than crediting an account from nothing, so every account balance summed together is exactly zero. `GET /ledger/integrity` re-derives the totals straight from `ledger_entries` (not the balances view, so it is a genuine cross-check) and asserts it. |
+| A customer cannot mint balance via the vault | Transfers explicitly reject system accounts. The vault is permitted to run negative; without that guard a customer could "transfer" from it. |
+| A closed account cannot strand funds | Closing is terminal and is refused while the account still holds a balance. |
 
 ## API examples
 
@@ -282,6 +297,72 @@ Replaying the exact same request with the same `Idempotency-Key` returns the
 same response body without posting a second pair of ledger entries. The same
 key with a *different* payload is rejected with `409 Conflict`.
 
+**Deposit cash (staff only)**
+
+Money entering the ledger still posts two legs — the vault is debited, the
+customer credited.
+
+```bash
+curl -X POST http://localhost:8080/accounts/2/deposit \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H 'Content-Type: application/json' \
+  -d '{"amountMinorUnits": 25000, "reference": "Counter deposit"}'
+```
+
+```json
+{
+  "transactionId": 8,
+  "transactionType": "DEPOSIT",
+  "accountId": 2,
+  "amountMinorUnits": 25000,
+  "resultingBalanceMinorUnits": 389575,
+  "reference": "Counter deposit",
+  "createdAt": "2026-08-25T10:41:12Z"
+}
+```
+
+**Prove the books balance**
+
+```bash
+curl http://localhost:8080/ledger/integrity -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+```json
+{
+  "balanced": true,
+  "totalDebitsMinorUnits": 2109575,
+  "totalCreditsMinorUnits": 2109575,
+  "netAcrossAllAccountsMinorUnits": 0,
+  "ledgerEntryCount": 16
+}
+```
+
+`netAcrossAllAccountsMinorUnits` is zero because the vault holds the exact
+negative of everything on deposit. If a balance were ever conjured without a
+matching debit, this would be non-zero.
+
+**Paged transaction history**
+
+A CUSTOMER's results are narrowed in SQL to transactions touching their own
+accounts, so pages stay full and totals do not leak other customers' activity.
+
+```bash
+curl "http://localhost:8080/transfers?page=0&size=20" -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+**Freeze or close an account (ADMIN only)**
+
+```bash
+curl -X PATCH http://localhost:8080/accounts/2/status \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"status": "INACTIVE"}'
+```
+
+`CLOSED` is terminal, and closing is refused while the account still holds a
+balance — otherwise the funds would be stranded on the books but unreachable.
+
 **View an account's ledger**
 
 ```bash
@@ -298,6 +379,12 @@ curl http://localhost:8080/ledger/1 -H "Authorization: Bearer $ACCESS_TOKEN"
   `JAVA_HOME` at a JDK in the 17–22 range)
 - Node 20+
 - Docker (for PostgreSQL, or the full stack)
+
+> If you already run PostgreSQL locally it will occupy port 5432 and silently
+> shadow the container, surfacing as a confusing `role "ledgerlite" does not
+> exist`. Start the stack on another port instead:
+> `POSTGRES_HOST_PORT=5433 docker compose up -d postgres`, and point the app at
+> it with `DB_URL=jdbc:postgresql://localhost:5433/ledgerlite`.
 
 ### Backend
 
@@ -322,22 +409,34 @@ npm run dev
 
 The app is now at `http://localhost:5173`.
 
-### Bootstrapping your first user
+### Seeding demo data
 
-There is no seed data or public registration endpoint (by design — in a
-bank, accounts aren't self-service). Create the first ADMIN directly in the
-database, then use the API to create everyone else:
+There is no public registration endpoint — in a bank, accounts are not
+self-service. One script sets up everything else:
 
-```sql
--- password_hash below is a BCrypt hash; generate your own with
--- new BCryptPasswordEncoder().encode("your-password") or any BCrypt tool.
-INSERT INTO users (username, email, password_hash, role)
-VALUES ('admin', 'admin@ledgerlite.local', '<bcrypt-hash>', 'ADMIN');
+```bash
+./scripts/seed-demo.sh
 ```
 
-From there, log in as `admin` and use `POST /users` (ADMIN/TELLER) to create
-TELLER, CUSTOMER, and AUDITOR accounts, and `POST /accounts` to open bank
-accounts for them.
+It creates a teller, an auditor and two customers, opens their accounts, funds
+them, posts a few transfers, and finishes by asserting the ledger balances.
+Every step goes through the public API, including the opening balances, which
+are posted as real deposits against the cash vault. **There is deliberately no
+SQL in it** — hand-inserting a balance produces a single-legged credit that
+creates money from nothing, which `GET /ledger/integrity` will then correctly
+report as unbalanced.
+
+The one exception is the very first admin row, since creating a user requires
+already being an admin.
+
+Sign in with any of:
+
+| Username | Password | Sees |
+|---|---|---|
+| `admin` | `Admin@12345` | Everything, including account status and user management |
+| `tom_teller` | `Password123!` | Opens accounts, moves money, records cash |
+| `amy_auditor` | `Password123!` | Read-only, including the audit trail |
+| `jane_customer` | `Password123!` | Only her own accounts and transfers |
 
 ## Docker
 
@@ -353,6 +452,60 @@ docker compose up --build
 
 Each service has a health check; `docker compose ps` shows readiness.
 
+## Design system
+
+The frontend is built on one token set rather than ad-hoc styling, so a change
+to spacing, radius, elevation or colour is a single-file change. Tokens live in
+`frontend/src/index.css`; primitives in `frontend/src/components/ui/`.
+
+The interface is built for **calm confidence** — the person using it is moving
+other people's money and needs to feel precise, not excited. That drives the
+restraint: one accent colour used only for interactive elements, hierarchy
+built from weight and spacing rather than decoration, and motion that confirms
+cause and effect without performing.
+
+Specific decisions worth calling out, drawn from Apple's interface and motion
+guidance:
+
+- **Feedback on pointer-down, not on release.** Buttons scale to 0.97 over
+  100ms on `:active`. Waiting for `click` to acknowledge a press is the single
+  thing that makes an interface feel dead.
+- **Size-specific tracking.** Large text gets negative letter-spacing
+  (`-0.022em` at display size) because letterforms drift apart as they grow;
+  small uppercase labels get `+0.075em` or they collapse into a block. A single
+  global `letter-spacing` is wrong somewhere.
+- **Tabular figures for money.** Without them, digits jitter and column edges
+  wobble as values change.
+- **Tables restructure on mobile, they do not shrink.** Below `md` each row
+  becomes a card driven by the same column definitions, so the two layouts
+  cannot disagree about what a row contains.
+- **Enter and exit along the same path.** The mobile drawer arrives from the
+  left and leaves to the left; modals grow in from slightly small and low.
+- **Three-state theme** (light / dark / follow the system), because a two-state
+  toggle cannot express "respect what I already chose at the OS level".
+- **Accessibility is measured, not assumed.** Every foreground/background pair
+  clears WCAG AA in both themes — see the table below. `:focus-visible` rings
+  are defined globally, and `prefers-reduced-motion`,
+  `prefers-reduced-transparency` and `prefers-contrast` each have real
+  handling rather than being ignored.
+
+Measured contrast ratios (AA needs 4.5:1 for normal text):
+
+| Token | Dark | Light |
+|---|---|---|
+| `--text-primary` | 17.7 | 17.2 |
+| `--text-secondary` | 8.5 | 7.2 |
+| `--text-tertiary` | 5.3 | 4.6 |
+| `--accent-fg` | 7.7 | 6.9 |
+| `--positive` | 7.5 | 5.1 |
+| `--negative` | 6.1 | 5.4 |
+| `--warning` | 8.9 | 5.7 |
+| white on accent fill | 4.6 | 5.7 |
+
+The accent exists as two tokens on purpose: as a button fill it must stay dark
+enough for white label text, and as link text it must be light enough to clear
+4.5:1. Using one value for both measured 4.24:1 and failed.
+
 ## Testing
 
 ```bash
@@ -365,15 +518,28 @@ PostgreSQL container per test run — no H2), generates a JaCoCo coverage
 report at `target/site/jacoco/index.html`, and enforces an 85% instruction
 coverage gate.
 
-Notable tests:
+43 tests, 92% instruction coverage. Notable ones:
 
 - `ConcurrentTransferIT` — 50 concurrent transfers proving the pessimistic
-  lock closes the double-spend race
-- `IdempotencyIT` — replay-safety and cross-payload conflict detection for
-  `Idempotency-Key`
+  lock closes the double-spend race: exactly 10 succeed against a balance that
+  affords 10, and the account lands on exactly zero
+- `CashOperationsIT` — deposits and withdrawals, including an assertion that
+  the ledger still balances afterwards
+- `IdempotencyIT` — replay-safety, cross-payload conflict detection, and that a
+  *failed* operation releases its key for a legitimate retry
+- `AccountLifecycleIT` — status transitions, that a frozen account rejects
+  transfers, that closing is terminal, and that an account holding money cannot
+  be closed
+- `TransactionHistoryIT` — paging plus the SQL-level access filter, including
+  that one customer cannot page through another's activity
 - `AuthControllerIT`, `AccountControllerIT`, `TransferControllerIT`,
   `AuditControllerIT`, `UserControllerIT` — MockMvc + Testcontainers,
   exercising the full filter chain including JWT auth and role checks
+
+Test fixtures fund accounts through the real deposit endpoint rather than
+inserting ledger rows. An earlier version seeded balances with a lone CREDIT,
+which creates money from nothing — the tests were asserting against a state the
+production code could never actually produce.
 
 ## CI/CD
 
@@ -403,18 +569,21 @@ Notable tests:
   script on the page. A production deployment should move the refresh
   token to an httpOnly, `SameSite=Strict` cookie and keep only the access
   token in memory.
-- **Multi-currency transfers with FX conversion.** Currently a transfer
-  assumes same-currency source and destination; cross-currency transfers
-  would need a rate-locking step recorded on the transaction.
+- **Multi-currency transfers with FX conversion.** An account carries a
+  currency, but a transfer currently assumes both sides match and does not
+  enforce it — cross-currency movement needs a rate-locking step recorded on
+  the transaction, and until that exists the API should reject mismatched
+  pairs outright.
+- **Pagination on the audit log and account list.** Transaction history is
+  paged; those two still return everything.
 - **Outbox pattern for downstream events.** Publishing `TransferCompleted`
   events (e.g. to notify a fraud-detection service) reliably would need an
   outbox table written in the same transaction as the ledger entries.
 - **Rate limiting** on `/auth/login` and `/transfers` to blunt brute-force
   and abuse.
-- **Scheduled reconciliation job** that independently re-derives every
-  account's balance from `ledger_entries` and alerts on any drift from the
-  `account_balances` view, as a defense-in-depth check against a bug in the
-  view itself.
+- **Scheduled reconciliation.** `GET /ledger/integrity` performs this check on
+  demand; running it on a schedule and alerting on failure would catch drift
+  without someone having to look.
 - **OpenTelemetry tracing** across the request → service → DB path, since
   `request_id` is already threaded through the audit log and would pair
   naturally with a trace ID.

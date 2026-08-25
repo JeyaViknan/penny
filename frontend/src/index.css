@@ -1,53 +1,461 @@
 @import "tailwindcss";
 
-@theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+/* ============================================================================
+   LedgerLite design system
 
-  /* Slate/graphite surfaces -- deliberately not pure black, so panels can
-     be distinguished from the page background without relying on shadows. */
-  --color-surface-0: #0b0e14;
-  --color-surface-1: #11151d;
-  --color-surface-2: #171c26;
-  --color-surface-3: #202634;
-  --color-border: #2a3140;
-  --color-border-strong: #3a4256;
+   The emotion this interface is built for is *calm confidence*. It is an
+   internal bank ledger: the person using it is moving other people's money and
+   needs to feel precise, not excited. Every decision below serves that -- one
+   restrained accent, generous whitespace, type that establishes hierarchy
+   through weight and spacing rather than colour, and motion that confirms
+   cause and effect without performing.
 
-  --color-text-primary: #e6e9ef;
-  --color-text-secondary: #9aa4b8;
-  --color-text-muted: #6b7488;
+   Apple-inspired in principle, not appearance: clarity, hierarchy, physical
+   feedback, disciplined motion.
+   ========================================================================= */
 
-  /* Single restrained accent -- deep ledger blue, used sparingly for
-     interactive elements and focus states, never as decoration. */
-  --color-accent: #3b82f6;
-  --color-accent-hover: #5b93f7;
-  --color-accent-muted: #1d2e4d;
+/* ---------------------------------------------------------------------------
+   Palette primitives. These never change between themes; the semantic tokens
+   below are what flip. Keeping raw values out of components entirely is what
+   makes a theme switch a one-file change.
+   ------------------------------------------------------------------------ */
+:root {
+  /* Graphite, deliberately blue-cool rather than neutral grey -- it reads as
+     screen/ink rather than concrete, and keeps the accent from feeling alien. */
+  --ink-950: #0a0d13;
+  --ink-900: #0f131b;
+  --ink-850: #141926;
+  --ink-800: #1a2030;
+  --ink-750: #212939;
+  --ink-700: #2b3446;
+  --ink-600: #3a4459;
+  --ink-500: #55617a;
+  --ink-400: #7b8699;
+  --ink-300: #a3acbd;
+  --ink-200: #c8ceda;
+  --ink-100: #e4e8ef;
+  --ink-50:  #f2f4f8;
 
-  --color-positive: #34d399;
-  --color-positive-muted: #113028;
-  --color-negative: #f87171;
-  --color-negative-muted: #3a1b1e;
-  --color-warning: #fbbf24;
-  --color-warning-muted: #3a2f14;
+  /* Warm paper for light mode. Pure white is harsh for long sessions and
+     makes every panel edge shout; a hint of warmth settles it down. */
+  --paper-0: #ffffff;
+  --paper-50: #fbfaf9;
+  --paper-100: #f5f4f1;
+  --paper-200: #eceae6;
+  --paper-300: #dedbd5;
+
+  /* One accent. A deep ink blue -- confident and legible on both grounds,
+     without the saturated "SaaS blue" that reads as a template. */
+  --blue-600: #2f5fd0;
+  --blue-500: #3d6fe3;
+  --blue-400: #5b87ea;
+  --blue-300: #8bacf2;
+
+  --green-600: #127a52;
+  --green-500: #1c9464;
+  --green-400: #34b57f;
+
+  --red-600: #b93b30;
+  --red-500: #d4483c;
+  --red-400: #e8695d;
+
+  /* Darker than a typical amber-600: at #a5720c this measured 4.02:1 on the
+     light canvas, and it is used for 11px badge text, which is not "large"
+     under WCAG and so needs 4.5:1. */
+  --amber-600: #855c00;
+  --amber-500: #c68a12;
+  --amber-400: #e0a52c;
+}
+
+/* ---------------------------------------------------------------------------
+   Semantic tokens -- dark is the default, matching the product's context
+   (long sessions, low-light back-office screens).
+   ------------------------------------------------------------------------ */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --surface-canvas: var(--ink-950);
+  --surface-raised: var(--ink-900);
+  --surface-overlay: var(--ink-850);
+  --surface-sunken: #070a0f;
+  --surface-inset: var(--ink-800);
+  --surface-hover: var(--ink-850);
+  --surface-active: var(--ink-800);
+
+  --border-subtle: #1e2534;
+  --border-default: #283044;
+  --border-strong: #3a4459;
+
+  --text-primary: var(--ink-50);
+  --text-secondary: var(--ink-300);
+  --text-tertiary: var(--ink-400);
+  --text-disabled: var(--ink-500);
+  --text-inverse: var(--ink-950);
+
+  /* Two accents, because one value cannot do both jobs: as a button fill it
+     must stay dark enough for white label text, and as link text on the dark
+     canvas it must be light enough to clear 4.5:1. Using the fill colour for
+     text measured 4.24:1 and failed AA. */
+  --accent: var(--blue-500);
+  --accent-hover: var(--blue-400);
+  --accent-fg: #7ba3f0;
+  --accent-text: #ffffff;
+  --accent-subtle: rgba(61, 111, 227, 0.14);
+  --accent-border: rgba(61, 111, 227, 0.32);
+
+  --positive: var(--green-400);
+  --positive-subtle: rgba(52, 181, 127, 0.13);
+  --negative: var(--red-400);
+  --negative-subtle: rgba(232, 105, 93, 0.13);
+  --warning: var(--amber-400);
+  --warning-subtle: rgba(224, 165, 44, 0.13);
+
+  /* Translucent chrome. Per the material rules: content scrolls *under*
+     floating surfaces rather than being clipped by an opaque strip. */
+  --chrome-bg: rgba(15, 19, 27, 0.72);
+  --chrome-blur: blur(20px) saturate(180%);
+  --scrim: rgba(5, 7, 11, 0.6);
+
+  /* Larger surfaces read as thicker: deeper shadow, not just bigger. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 40px -8px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 32px 72px -16px rgba(0, 0, 0, 0.7);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  --surface-canvas: var(--paper-50);
+  --surface-raised: var(--paper-0);
+  --surface-overlay: var(--paper-0);
+  --surface-sunken: var(--paper-100);
+  --surface-inset: var(--paper-100);
+  --surface-hover: var(--paper-100);
+  --surface-active: var(--paper-200);
+
+  --border-subtle: var(--paper-200);
+  --border-default: var(--paper-300);
+  --border-strong: #c3bfb7;
+
+  --text-primary: #14171f;
+  --text-secondary: #4e5566;
+  --text-tertiary: #6b7385;
+  --text-disabled: #9aa1b0;
+  --text-inverse: #ffffff;
+
+  --accent: var(--blue-600);
+  --accent-hover: var(--blue-500);
+  --accent-fg: #2450b8;
+  --accent-text: #ffffff;
+  --accent-subtle: rgba(47, 95, 208, 0.09);
+  --accent-border: rgba(47, 95, 208, 0.28);
+
+  --positive: var(--green-600);
+  --positive-subtle: rgba(18, 122, 82, 0.1);
+  --negative: var(--red-600);
+  --negative-subtle: rgba(185, 59, 48, 0.09);
+  --warning: var(--amber-600);
+  --warning-subtle: rgba(165, 114, 12, 0.11);
+
+  --chrome-bg: rgba(255, 255, 255, 0.76);
+  --chrome-blur: blur(20px) saturate(180%);
+  --scrim: rgba(24, 22, 20, 0.34);
+
+  --shadow-sm: 0 1px 2px rgba(24, 22, 20, 0.06);
+  --shadow-md: 0 4px 14px -2px rgba(24, 22, 20, 0.1);
+  --shadow-lg: 0 16px 40px -8px rgba(24, 22, 20, 0.14);
+  --shadow-xl: 0 32px 72px -16px rgba(24, 22, 20, 0.18);
+}
+
+/* ---------------------------------------------------------------------------
+   Expose semantic tokens to Tailwind. Utilities resolve to the var, so they
+   follow the active theme automatically.
+   ------------------------------------------------------------------------ */
+@theme inline {
+  --font-sans: 'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+
+  --color-canvas: var(--surface-canvas);
+  --color-raised: var(--surface-raised);
+  --color-overlay: var(--surface-overlay);
+  --color-sunken: var(--surface-sunken);
+  --color-inset: var(--surface-inset);
+  --color-hover: var(--surface-hover);
+
+  --color-line: var(--border-subtle);
+  --color-line-strong: var(--border-default);
+  --color-line-heavy: var(--border-strong);
+
+  --color-fg: var(--text-primary);
+  --color-fg-muted: var(--text-secondary);
+  --color-fg-subtle: var(--text-tertiary);
+  --color-fg-disabled: var(--text-disabled);
+
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-accent-line: var(--accent-border);
+  --color-on-accent: var(--accent-text);
+
+  --color-positive: var(--positive);
+  --color-positive-subtle: var(--positive-subtle);
+  --color-negative: var(--negative);
+  --color-negative-subtle: var(--negative-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 13px;
+  --radius-xl: 18px;
+  --radius-2xl: 24px;
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+}
+
+/* ---------------------------------------------------------------------------
+   Motion. Durations are short because this is a dense working tool -- anything
+   slower than ~250ms starts to feel like waiting rather than responding.
+
+   The standard curve is a strong ease-out: motion leaves quickly and settles
+   gently, which reads as physical. Reversible transitions use the mirrored
+   curve so the return path matches the outbound one.
+   ------------------------------------------------------------------------ */
+:root {
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in: cubic-bezier(1, 0, 0.68, 0.28);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --duration-press: 100ms;
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-slow: 320ms;
+
+  --space-header: 3.5rem;
+  --sidebar-width: 15rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   ------------------------------------------------------------------------ */
+* {
+  border-color: var(--border-subtle);
 }
 
 html {
-  color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  background: var(--color-surface-0);
-  color: var(--color-text-primary);
+  background: var(--surface-canvas);
+  color: var(--text-primary);
   font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis-weight: none;
+  /* Theme flips are eased rather than snapped -- an abrupt full-viewport
+     brightness jump is exactly the kind of change that reads as a glitch. */
+  transition: background-color var(--duration-base) var(--ease-out),
+              color var(--duration-base) var(--ease-out);
 }
 
-.font-figures {
+/* ---------------------------------------------------------------------------
+   Typography scale.
+
+   Tracking is size-specific, never one global value: large text needs negative
+   tracking because letterforms drift apart as they grow, and small text needs
+   slightly positive tracking to stay legible. Leading moves inversely to size.
+   ------------------------------------------------------------------------ */
+.t-display {
+  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.5rem);
+  line-height: 1.08;
+  letter-spacing: -0.022em;
+  font-weight: 600;
+}
+
+.t-title {
+  font-size: 1.375rem;
+  line-height: 1.2;
+  letter-spacing: -0.018em;
+  font-weight: 600;
+}
+
+.t-heading {
+  font-size: 1.0625rem;
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+  font-weight: 600;
+}
+
+.t-subhead {
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  letter-spacing: -0.006em;
+  font-weight: 550;
+}
+
+.t-body {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  letter-spacing: 0;
+}
+
+.t-caption {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  letter-spacing: 0.004em;
+}
+
+/* Section labels and table headers. Uppercase needs generous tracking or it
+   collapses into an unreadable block. */
+.t-label {
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* Money and identifiers. Tabular figures keep columns aligned as values
+   change -- without it, digits jitter and the column edge wobbles. */
+.t-figure {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'zero' 1;
+  letter-spacing: -0.01em;
+}
+
+/* ---------------------------------------------------------------------------
+   Focus. Keyboard users previously got nothing at all. :focus-visible keeps
+   the ring off mouse clicks while guaranteeing it for keyboard traversal.
+   ------------------------------------------------------------------------ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
 }
 
 ::selection {
-  background: var(--color-accent-muted);
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
+
+/* Scrollbars, styled so they belong to the surface rather than the OS. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+  background-clip: content-box;
+}
+
+/* ---------------------------------------------------------------------------
+   Keyframes.
+
+   Surfaces materialise rather than simply fading: scale and opacity move
+   together so the panel reads as a real object arriving. Travel distances are
+   small (8-12px) because a large slide draws attention to the animation
+   itself instead of to the content that arrived.
+   ------------------------------------------------------------------------ */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes drawer-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+/* Route transitions are deliberately understated: a short lift and fade marks
+   that content changed without making navigation feel slow. */
+.view-enter {
+  animation: view-in var(--duration-base) var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view-enter { animation: fade-in var(--duration-fast) linear both; }
+}
+
+/* ---------------------------------------------------------------------------
+   Accessibility preferences.
+
+   Reduced motion does not mean no feedback -- it means a gentler,
+   non-vestibular equivalent. Opacity and colour changes that aid comprehension
+   are kept; travel, springs and overshoot are dropped.
+   ------------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root,
+  [data-theme='dark'] {
+    --chrome-bg: var(--ink-900);
+    --chrome-blur: none;
+  }
+  [data-theme='light'] {
+    --chrome-bg: var(--paper-0);
+    --chrome-blur: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root,
+  [data-theme='dark'] {
+    --border-subtle: #4a5468;
+    --border-default: #5d6980;
+    --text-secondary: var(--ink-100);
+    --text-tertiary: var(--ink-200);
+    --accent-fg: #a8c4f7;
+  }
+  [data-theme='light'] {
+    --border-subtle: #9a958c;
+    --border-default: #6f6b64;
+    --text-secondary: #2a2d36;
+    --text-tertiary: #3c414d;
+  }
 }

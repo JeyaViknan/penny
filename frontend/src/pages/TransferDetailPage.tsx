@@ -1,66 +1,115 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { type ReactNode } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { transfersApi } from '../api/endpoints'
-import { extractErrorMessage } from '../api/client'
-import type { TransferResponse } from '../api/types'
-import { ErrorBanner, PageHeader, Panel } from '../components/Panel'
-import { formatDateTime, formatMinorUnits } from '../lib/money'
+import { IconArrowLeft } from '../components/Icons'
+import { Button } from '../components/ui/Button'
+import { Badge, Card, EmptyState, PageHeader, Skeleton } from '../components/ui/Surface'
+import { formatAccountNumber, formatDateTime, formatMinorUnits, isVaultSide } from '../lib/money'
+import { useAsync } from '../lib/useAsync'
 
 export function TransferDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const [transfer, setTransfer] = useState<TransferResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    transfersApi
-      .get(Number(id))
-      .then(setTransfer)
-      .catch((err) => setError(extractErrorMessage(err)))
-  }, [id])
+  const navigate = useNavigate()
+  const transfer = useAsync(() => transfersApi.get(Number(id)), [id])
+  const data = transfer.data
 
   return (
     <div className="max-w-lg">
-      <Link to="/accounts" className="mb-3 inline-block text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]">
-        ← Back
-      </Link>
-      {error && <ErrorBanner message={error} />}
-      <PageHeader title={`Transfer #${id}`} />
+      <button
+        onClick={() => navigate(-1)}
+        className="t-caption mb-4 inline-flex items-center gap-1.5 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+      >
+        <IconArrowLeft className="h-3.5 w-3.5" />
+        Back
+      </button>
 
-      {transfer && (
-        <Panel>
-          <dl className="space-y-3 text-sm">
-            <Row label="Amount" value={formatMinorUnits(transfer.amountMinorUnits)} emphasize />
-            <Row label="Reference" value={transfer.reference} />
-            <Row
-              label="From account"
-              value={
-                <Link to={`/accounts/${transfer.sourceAccountId}`} className="font-mono hover:text-[var(--color-accent)]">
-                  Account #{transfer.sourceAccountId}
-                </Link>
-              }
-            />
-            <Row
-              label="To account"
-              value={
-                <Link to={`/accounts/${transfer.destinationAccountId}`} className="font-mono hover:text-[var(--color-accent)]">
-                  Account #{transfer.destinationAccountId}
-                </Link>
-              }
-            />
-            <Row label="Posted" value={formatDateTime(transfer.createdAt)} />
-          </dl>
-        </Panel>
+      {transfer.error ? (
+        <EmptyState
+          title="This transaction could not be opened"
+          description={transfer.error}
+          action={
+            <div className="flex gap-2">
+              <Button onClick={transfer.reload}>Try again</Button>
+              <Button variant="primary" asLink="/activity">
+                View all activity
+              </Button>
+            </div>
+          }
+        />
+      ) : (
+        <>
+          <PageHeader title={`Transaction #${id}`} description="A posted, immutable movement of money." />
+
+          <Card padded={false}>
+            <div className="border-b border-[var(--border-subtle)] px-5 py-7 text-center">
+              <p className="t-label text-[var(--text-tertiary)]">Amount</p>
+              {transfer.loading || !data ? (
+                <Skeleton className="mx-auto mt-3 h-9 w-40" />
+              ) : (
+                <>
+                  <p className="t-figure mt-2 text-[2rem] font-semibold tracking-tight text-[var(--text-primary)]">
+                    {formatMinorUnits(data.amountMinorUnits)}
+                  </p>
+                  <div className="mt-2.5">
+                    <Badge>{data.transactionType}</Badge>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <dl className="divide-y divide-[var(--border-subtle)]">
+              <Row label="Reference" loading={transfer.loading}>
+                {data?.reference}
+              </Row>
+              <Row label="From" loading={transfer.loading}>
+                {data && (
+                  <AccountRef
+                    isVault={isVaultSide(data.transactionType, 'debit')}
+                    id={data.sourceAccountId}
+                    number={data.sourceAccountNumber}
+                  />
+                )}
+              </Row>
+              <Row label="To" loading={transfer.loading}>
+                {data && (
+                  <AccountRef
+                    isVault={isVaultSide(data.transactionType, 'credit')}
+                    id={data.destinationAccountId}
+                    number={data.destinationAccountNumber}
+                  />
+                )}
+              </Row>
+              <Row label="Posted" loading={transfer.loading}>
+                {data && formatDateTime(data.createdAt)}
+              </Row>
+            </dl>
+          </Card>
+        </>
       )}
     </div>
   )
 }
 
-function Row({ label, value, emphasize }: { label: string; value: ReactNode; emphasize?: boolean }) {
+function AccountRef({ isVault, id, number }: { isVault: boolean; id: number; number: string }) {
+  if (isVault) {
+    return <span className="t-caption text-[var(--text-tertiary)]">Cash vault</span>
+  }
   return (
-    <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3 last:border-0 last:pb-0">
-      <dt className="text-[var(--color-text-secondary)]">{label}</dt>
-      <dd className={`font-figures ${emphasize ? 'text-lg font-semibold text-[var(--color-accent-hover)]' : 'text-[var(--color-text-primary)]'}`}>
-        {value}
+    <Link
+      to={`/accounts/${id}`}
+      className="t-figure text-[0.875rem] transition-colors hover:text-[var(--accent-fg)]"
+    >
+      {formatAccountNumber(number)}
+    </Link>
+  )
+}
+
+function Row({ label, children, loading }: { label: string; children: ReactNode; loading: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4 px-5 py-3.5">
+      <dt className="t-caption text-[var(--text-secondary)]">{label}</dt>
+      <dd className="t-body min-w-0 truncate text-right text-[var(--text-primary)]">
+        {loading ? <Skeleton className="ml-auto h-4 w-28" /> : children}
       </dd>
     </div>
   )

@@ -7,7 +7,11 @@ services:
       POSTGRES_USER: ledgerlite
       POSTGRES_PASSWORD: ledgerlite
     ports:
-      - "5432:5432"
+      # Host port is configurable because 5432 is very often already taken by a
+      # locally installed Postgres, which silently shadows this container and
+      # produces a confusing "role does not exist" error. Override with
+      # POSTGRES_HOST_PORT=5433 if that happens.
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - ledgerlite-pgdata:/var/lib/postgresql/data
     healthcheck:

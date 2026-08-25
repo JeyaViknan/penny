@@ -1,104 +1,158 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
-import { accountsApi } from '../api/endpoints'
+import { useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { extractErrorMessage } from '../api/client'
+import { accountsApi, usersApi } from '../api/endpoints'
 import type { AccountResponse } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { EmptyState, ErrorBanner, PageHeader, Panel } from '../components/Panel'
-import { StatusBadge } from '../components/StatusBadge'
-import { formatMinorUnits } from '../lib/money'
+import { IconAccounts, IconPlus } from '../components/Icons'
+import { Button } from '../components/ui/Button'
+import { DataTable, type Column } from '../components/ui/DataTable'
+import { SelectInput } from '../components/ui/Field'
+import { Modal } from '../components/ui/Modal'
+import { Badge, Card, EmptyState, ErrorState, PageHeader } from '../components/ui/Surface'
+import { useToast } from '../components/ui/Toast'
+import { formatAccountNumber, formatMinorUnits } from '../lib/money'
+import { useAsync } from '../lib/useAsync'
 
 export function AccountsPage() {
   const { user } = useAuth()
-  const canCreate = user?.role === 'ADMIN' || user?.role === 'TELLER'
-  const [accounts, setAccounts] = useState<AccountResponse[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [showForm, setShowForm] = useState(false)
+  const navigate = useNavigate()
+  const accounts = useAsync(() => accountsApi.list(), [])
+  const [openDialog, setOpenDialog] = useState(false)
 
-  function reload() {
-    accountsApi
-      .list()
-      .then(setAccounts)
-      .catch((err) => setError(extractErrorMessage(err)))
-  }
-
-  useEffect(reload, [])
+  const canOpenAccounts = user?.role === 'ADMIN' || user?.role === 'TELLER'
+  const isStaff = user?.role !== 'CUSTOMER'
 
   return (
     <div>
-      <PageHeader title="Accounts" subtitle="All accounts you have access to." />
-      {error && <ErrorBanner message={error} />}
+      <PageHeader
+        title="Accounts"
+        description={isStaff ? 'Every customer account on the books.' : 'Accounts held in your name.'}
+        action={
+          canOpenAccounts && (
+            <Button variant="primary" iconLeft={<IconPlus className="h-4 w-4" />} onClick={() => setOpenDialog(true)}>
+              Open account
+            </Button>
+          )
+        }
+      />
 
-      {canCreate && (
+      {accounts.error && (
         <div className="mb-4">
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            className="rounded border border-[var(--color-border)] px-3 py-1.5 text-sm text-[var(--color-text-primary)] hover:border-[var(--color-border-strong)]"
-          >
-            {showForm ? 'Cancel' : '+ Open account'}
-          </button>
-          {showForm && <NewAccountForm onCreated={() => { setShowForm(false); reload() }} />}
+          <ErrorState message={accounts.error} onRetry={accounts.reload} />
         </div>
       )}
 
-      <Panel>
-        {!accounts ? (
-          <p className="text-sm text-[var(--color-text-muted)]">Loading…</p>
-        ) : accounts.length === 0 ? (
-          <EmptyState message="No accounts to show." />
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
-                <th className="pb-2 font-medium">Account number</th>
-                <th className="pb-2 font-medium">Type</th>
-                <th className="pb-2 font-medium">Status</th>
-                <th className="pb-2 font-medium">Currency</th>
-                <th className="pb-2 text-right font-medium">Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((account) => (
-                <tr key={account.id} className="border-b border-[var(--color-border)] last:border-0">
-                  <td className="py-2.5">
-                    <Link
-                      to={`/accounts/${account.id}`}
-                      className="font-mono text-[var(--color-text-primary)] hover:text-[var(--color-accent)]"
-                    >
-                      {account.accountNumber}
-                    </Link>
-                  </td>
-                  <td className="py-2.5 text-[var(--color-text-secondary)]">{account.accountType}</td>
-                  <td className="py-2.5">
-                    <StatusBadge value={account.status} />
-                  </td>
-                  <td className="py-2.5 text-[var(--color-text-secondary)]">{account.currency}</td>
-                  <td className="py-2.5 text-right font-figures text-[var(--color-text-primary)]">
-                    {formatMinorUnits(account.balanceMinorUnits, account.currency)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Panel>
+      <Card padded={false}>
+        <DataTable
+          caption="Accounts"
+          columns={columns(isStaff)}
+          rows={accounts.data ?? []}
+          rowKey={(a) => a.id}
+          loading={accounts.loading}
+          onRowClick={(a) => navigate(`/accounts/${a.id}`)}
+          empty={
+            <EmptyState
+              icon={<IconAccounts className="h-5 w-5" />}
+              title={canOpenAccounts ? 'No accounts opened yet' : 'No accounts yet'}
+              description={
+                canOpenAccounts
+                  ? 'Open the first account to start recording deposits and transfers against it.'
+                  : 'Once a teller opens an account in your name it will appear here.'
+              }
+              action={
+                canOpenAccounts && (
+                  <Button variant="secondary" iconLeft={<IconPlus className="h-4 w-4" />} onClick={() => setOpenDialog(true)}>
+                    Open account
+                  </Button>
+                )
+              }
+            />
+          }
+        />
+      </Card>
+
+      <OpenAccountDialog
+        open={openDialog}
+        onClose={() => setOpenDialog(false)}
+        onCreated={() => {
+          setOpenDialog(false)
+          accounts.reload()
+        }}
+      />
     </div>
   )
 }
 
-function NewAccountForm({ onCreated }: { onCreated: () => void }) {
+function columns(isStaff: boolean): Column<AccountResponse>[] {
+  const base: Column<AccountResponse>[] = [
+    {
+      key: 'number',
+      header: 'Account number',
+      primary: true,
+      render: (a) => <span className="t-figure text-[0.875rem] text-[var(--text-primary)]">{formatAccountNumber(a.accountNumber)}</span>,
+    },
+  ]
+
+  if (isStaff) {
+    base.push({
+      key: 'owner',
+      header: 'Holder',
+      render: (a) => <span className="text-[var(--text-secondary)]">{a.ownerUsername ?? '—'}</span>,
+    })
+  }
+
+  base.push(
+    { key: 'type', header: 'Type', render: (a) => <span className="t-caption text-[var(--text-secondary)]">{a.accountType}</span> },
+    { key: 'status', header: 'Status', secondary: true, render: (a) => <Badge>{a.status}</Badge> },
+    {
+      key: 'balance',
+      header: 'Balance',
+      align: 'right',
+      render: (a) => (
+        <span className="t-figure whitespace-nowrap text-[0.875rem] text-[var(--text-primary)]">
+          {formatMinorUnits(a.balanceMinorUnits, a.currency)}
+        </span>
+      ),
+    },
+  )
+
+  return base
+}
+
+function OpenAccountDialog({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean
+  onClose: () => void
+  onCreated: () => void
+}) {
+  const { notify } = useToast()
+  // Only fetched while the dialog is open -- there is no reason to pull the
+  // full user list on every visit to the accounts page.
+  const users = useAsync(() => (open ? usersApi.list() : Promise.resolve([])), [open])
   const [ownerUserId, setOwnerUserId] = useState('')
   const [accountType, setAccountType] = useState('CHECKING')
   const [currency, setCurrency] = useState('USD')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  const customers = (users.data ?? []).filter((u) => u.role === 'CUSTOMER')
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
+    if (!ownerUserId) {
+      setError('Choose which customer this account belongs to.')
+      return
+    }
     setError(null)
     setSubmitting(true)
     try {
-      await accountsApi.create({ ownerUserId: Number(ownerUserId), accountType, currency })
+      const account = await accountsApi.create({ ownerUserId: Number(ownerUserId), accountType, currency })
+      notify(`Account ${formatAccountNumber(account.accountNumber)} opened`, 'success')
+      setOwnerUserId('')
       onCreated()
     } catch (err) {
       setError(extractErrorMessage(err))
@@ -108,50 +162,54 @@ function NewAccountForm({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-3 flex flex-wrap items-end gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-1)] p-4">
-      {error && <div className="w-full text-sm text-[var(--color-negative)]">{error}</div>}
-      <Field label="Owner user ID">
-        <input
-          required
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Open an account"
+      description="The account number is generated automatically and cannot be chosen."
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={handleSubmit} loading={submitting}>
+            Open account
+          </Button>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <ErrorState message={error} />}
+
+        {/* A picker, not a raw id field -- nobody knows a customer's numeric
+            primary key, and asking for one guarantees mistyped accounts. */}
+        <SelectInput
+          label="Account holder"
           value={ownerUserId}
           onChange={(e) => setOwnerUserId(e.target.value)}
-          className="w-32 rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1.5 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-        />
-      </Field>
-      <Field label="Type">
-        <select
-          value={accountType}
-          onChange={(e) => setAccountType(e.target.value)}
-          className="rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1.5 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+          disabled={users.loading}
+          required
         >
+          <option value="">{users.loading ? 'Loading customers…' : 'Select a customer'}</option>
+          {customers.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.username} · {u.email}
+            </option>
+          ))}
+        </SelectInput>
+
+        <SelectInput label="Account type" value={accountType} onChange={(e) => setAccountType(e.target.value)}>
           <option value="CHECKING">Checking</option>
           <option value="SAVINGS">Savings</option>
-        </select>
-      </Field>
-      <Field label="Currency">
-        <input
-          value={currency}
-          onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-          maxLength={3}
-          className="w-20 rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1.5 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-        />
-      </Field>
-      <button
-        type="submit"
-        disabled={submitting}
-        className="rounded bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
-      >
-        {submitting ? 'Creating…' : 'Create'}
-      </button>
-    </form>
-  )
-}
+        </SelectInput>
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]">{label}</span>
-      {children}
-    </label>
+        <SelectInput label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+          <option value="USD">USD — US Dollar</option>
+          <option value="EUR">EUR — Euro</option>
+          <option value="GBP">GBP — Pound Sterling</option>
+          <option value="INR">INR — Indian Rupee</option>
+        </SelectInput>
+      </form>
+    </Modal>
   )
 }

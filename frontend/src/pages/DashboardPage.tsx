@@ -1,94 +1,188 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { accountsApi } from '../api/endpoints'
-import { extractErrorMessage } from '../api/client'
-import type { AccountResponse } from '../api/types'
+import { accountsApi, transfersApi } from '../api/endpoints'
+import type { AccountResponse, TransactionSummaryResponse } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { ErrorBanner, PageHeader, Panel } from '../components/Panel'
-import { StatusBadge } from '../components/StatusBadge'
-import { formatMinorUnits } from '../lib/money'
+import { IconAccounts, IconPlus, IconTransfer } from '../components/Icons'
+import { Button } from '../components/ui/Button'
+import { DataTable, type Column } from '../components/ui/DataTable'
+import { Badge, Card, CardHeader, EmptyState, ErrorState, PageHeader, Skeleton } from '../components/ui/Surface'
+import { formatAccountNumber, formatDate, formatMinorUnits } from '../lib/money'
+import { useAsync } from '../lib/useAsync'
 
 export function DashboardPage() {
   const { user } = useAuth()
-  const [accounts, setAccounts] = useState<AccountResponse[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const accounts = useAsync(() => accountsApi.list(), [])
+  const activity = useAsync(() => transfersApi.history({ size: 6 }), [])
 
-  useEffect(() => {
-    accountsApi
-      .list()
-      .then(setAccounts)
-      .catch((err) => setError(extractErrorMessage(err)))
-  }, [])
-
-  const totalBalance = accounts?.reduce((sum, a) => sum + a.balanceMinorUnits, 0) ?? 0
-  const activeAccounts = accounts?.filter((a) => a.status === 'ACTIVE').length ?? 0
+  const isStaff = user?.role !== 'CUSTOMER'
+  const list = accounts.data ?? []
+  const totalBalance = list.reduce((sum, a) => sum + a.balanceMinorUnits, 0)
+  const activeCount = list.filter((a) => a.status === 'ACTIVE').length
 
   return (
     <div>
-      <PageHeader title={`Welcome back, ${user?.username}`} subtitle="Here's what's happening across your accounts." />
-      {error && <ErrorBanner message={error} />}
+      <PageHeader
+        title={`Good to see you, ${user?.username}`}
+        description={
+          isStaff
+            ? 'Institution-wide position across every customer account.'
+            : 'Your accounts and recent activity at a glance.'
+        }
+        action={
+          user?.role !== 'AUDITOR' && (
+            <Button variant="primary" iconLeft={<IconTransfer className="h-4 w-4" />} asLink="/transfer">
+              Send money
+            </Button>
+          )
+        }
+      />
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <SummaryCard label="Accounts" value={accounts ? String(accounts.length) : '—'} />
-        <SummaryCard label="Active" value={accounts ? String(activeAccounts) : '—'} />
-        <SummaryCard
-          label="Combined balance"
-          value={accounts ? formatMinorUnits(totalBalance) : '—'}
-          emphasize
+      {accounts.error && <ErrorState message={accounts.error} onRetry={accounts.reload} />}
+
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Stat
+          label={isStaff ? 'Total on deposit' : 'Total balance'}
+          value={accounts.loading ? null : formatMinorUnits(totalBalance)}
+          emphasis
         />
+        <Stat label="Accounts" value={accounts.loading ? null : String(list.length)} />
+        <Stat label="Active" value={accounts.loading ? null : String(activeCount)} />
       </div>
 
-      <Panel title="Accounts" action={<Link to="/accounts" className="text-xs text-[var(--color-accent)] hover:underline">View all</Link>}>
-        {!accounts ? (
-          <p className="text-sm text-[var(--color-text-muted)]">Loading…</p>
-        ) : accounts.length === 0 ? (
-          <p className="text-sm text-[var(--color-text-muted)]">No accounts yet.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
-                <th className="pb-2 font-medium">Account</th>
-                <th className="pb-2 font-medium">Type</th>
-                <th className="pb-2 font-medium">Status</th>
-                <th className="pb-2 text-right font-medium">Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.slice(0, 6).map((account) => (
-                <tr key={account.id} className="border-b border-[var(--color-border)] last:border-0">
-                  <td className="py-2.5 font-mono text-[var(--color-text-primary)]">
-                    <Link to={`/accounts/${account.id}`} className="hover:text-[var(--color-accent)]">
-                      {account.accountNumber}
-                    </Link>
-                  </td>
-                  <td className="py-2.5 text-[var(--color-text-secondary)]">{account.accountType}</td>
-                  <td className="py-2.5">
-                    <StatusBadge value={account.status} />
-                  </td>
-                  <td className="py-2.5 text-right font-figures text-[var(--color-text-primary)]">
-                    {formatMinorUnits(account.balanceMinorUnits, account.currency)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Panel>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <Card padded={false}>
+          <CardHeader
+            title="Accounts"
+            action={
+              <Link
+                to="/accounts"
+                className="t-caption font-medium text-[var(--accent-fg)] transition-opacity hover:opacity-75"
+              >
+                View all
+              </Link>
+            }
+          />
+          <DataTable
+            caption="Accounts"
+            columns={ACCOUNT_COLUMNS}
+            rows={list.slice(0, 5)}
+            rowKey={(a) => a.id}
+            loading={accounts.loading}
+            skeletonRows={3}
+            empty={
+              <EmptyState
+                icon={<IconAccounts className="h-5 w-5" />}
+                title="No accounts yet"
+                description={
+                  isStaff
+                    ? 'Open an account for a customer to start recording transactions against it.'
+                    : 'Your accounts will appear here once a teller opens one for you.'
+                }
+                action={
+                  isStaff && (
+                    <Button variant="secondary" iconLeft={<IconPlus className="h-4 w-4" />} asLink="/accounts">
+                      Open an account
+                    </Button>
+                  )
+                }
+              />
+            }
+          />
+        </Card>
+
+        <Card padded={false}>
+          <CardHeader
+            title="Recent activity"
+            action={
+              <Link
+                to="/activity"
+                className="t-caption font-medium text-[var(--accent-fg)] transition-opacity hover:opacity-75"
+              >
+                View all
+              </Link>
+            }
+          />
+          <DataTable
+            caption="Recent transactions"
+            columns={ACTIVITY_COLUMNS}
+            rows={activity.data?.items ?? []}
+            rowKey={(t) => t.transactionId}
+            loading={activity.loading}
+            skeletonRows={3}
+            empty={
+              <EmptyState
+                icon={<IconTransfer className="h-5 w-5" />}
+                title="Nothing has moved yet"
+                description="Deposits, withdrawals and transfers will show up here as soon as they are posted."
+              />
+            }
+          />
+        </Card>
+      </div>
     </div>
   )
 }
 
-function SummaryCard({ label, value, emphasize }: { label: string; value: string; emphasize?: boolean }) {
-  return (
-    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-1)] p-5">
-      <div className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">{label}</div>
-      <div
-        className={`mt-2 font-figures text-2xl font-semibold ${
-          emphasize ? 'text-[var(--color-accent-hover)]' : 'text-[var(--color-text-primary)]'
-        }`}
+const ACCOUNT_COLUMNS: Column<AccountResponse>[] = [
+  {
+    key: 'number',
+    header: 'Account',
+    primary: true,
+    render: (a) => (
+      <Link
+        to={`/accounts/${a.id}`}
+        className="t-figure text-[0.875rem] text-[var(--text-primary)] transition-colors hover:text-[var(--accent-fg)]"
       >
-        {value}
-      </div>
-    </div>
+        {formatAccountNumber(a.accountNumber)}
+      </Link>
+    ),
+  },
+  { key: 'type', header: 'Type', render: (a) => <span className="t-caption text-[var(--text-secondary)]">{a.accountType}</span> },
+  { key: 'status', header: 'Status', secondary: true, render: (a) => <Badge>{a.status}</Badge> },
+  {
+    key: 'balance',
+    header: 'Balance',
+    align: 'right',
+    render: (a) => (
+      <span className="t-figure whitespace-nowrap text-[0.875rem] text-[var(--text-primary)]">
+        {formatMinorUnits(a.balanceMinorUnits, a.currency)}
+      </span>
+    ),
+  },
+]
+
+const ACTIVITY_COLUMNS: Column<TransactionSummaryResponse>[] = [
+  {
+    key: 'reference',
+    header: 'Reference',
+    primary: true,
+    render: (t) => <span className="text-[var(--text-primary)]">{t.reference}</span>,
+  },
+  { key: 'type', header: 'Type', secondary: true, render: (t) => <Badge>{t.transactionType}</Badge> },
+  { key: 'date', header: 'Date', render: (t) => <span className="t-caption whitespace-nowrap text-[var(--text-tertiary)]">{formatDate(t.createdAt)}</span> },
+  {
+    key: 'amount',
+    header: 'Amount',
+    align: 'right',
+    render: (t) => <span className="t-figure whitespace-nowrap text-[0.875rem] text-[var(--text-primary)]">{formatMinorUnits(t.amountMinorUnits)}</span>,
+  },
+]
+
+function Stat({ label, value, emphasis }: { label: string; value: string | null; emphasis?: boolean }) {
+  return (
+    <Card>
+      <p className="t-label text-[var(--text-tertiary)]">{label}</p>
+      {value === null ? (
+        <Skeleton className="mt-2.5 h-7 w-32" />
+      ) : (
+        <p
+          className={`t-figure mt-2 ${
+            emphasis ? 'text-[1.625rem] font-semibold text-[var(--text-primary)]' : 'text-[1.375rem] text-[var(--text-primary)]'
+          }`}
+        >
+          {value}
+        </p>
+      )}
+    </Card>
   )
 }

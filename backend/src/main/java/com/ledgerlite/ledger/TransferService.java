@@ -65,7 +65,9 @@ public class TransferService {
         PostingResult posting = ledgerPostingService.postTransfer(
                 source.id(), destination.id(), request.amountMinorUnits(), request.reference(), initiatedByUserId);
 
-        return toResponse(posting);
+        return new TransferResponse(posting.transactionId(), posting.transactionType(),
+                source.id(), source.accountNumber(), destination.id(), destination.accountNumber(),
+                posting.amountMinorUnits(), posting.reference(), posting.createdAt());
     }
 
     @PostAuthorize("hasAnyRole('ADMIN', 'AUDITOR', 'TELLER') "
@@ -75,7 +77,9 @@ public class TransferService {
         TransactionSummary summary = transactionRepository.findSummaryById(transactionId)
                 .orElseThrow(() -> new ResourceNotFoundException("No transfer with id: " + transactionId));
 
-        return new TransferResponse(summary.transactionId(), summary.debitAccountId(), summary.creditAccountId(),
+        return new TransferResponse(summary.transactionId(), summary.transactionType(),
+                summary.debitAccountId(), summary.debitAccountNumber(),
+                summary.creditAccountId(), summary.creditAccountNumber(),
                 summary.amountMinorUnits(), summary.reference(), summary.createdAt());
     }
 
@@ -85,8 +89,4 @@ public class TransferService {
         }
     }
 
-    private TransferResponse toResponse(PostingResult posting) {
-        return new TransferResponse(posting.transactionId(), posting.debitAccountId(), posting.creditAccountId(),
-                posting.amountMinorUnits(), posting.reference(), posting.createdAt());
-    }
 }

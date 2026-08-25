@@ -1,7 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { useAuth } from '../auth/AuthContext'
 import { extractErrorMessage } from '../api/client'
+import { useAuth } from '../auth/AuthContext'
+import { Button } from '../components/ui/Button'
+import { TextInput } from '../components/ui/Field'
+import { ErrorState } from '../components/ui/Surface'
+import { ThemeToggle } from '../components/ui/ThemeToggle'
 
 export function LoginPage() {
   const { user, login } = useAuth()
@@ -28,62 +32,51 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--color-surface-0)] px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded bg-[var(--color-accent-muted)] font-mono text-base font-semibold text-[var(--color-accent)]">
-            LL
-          </div>
-          <div className="text-center">
-            <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">LedgerLite</h1>
-            <p className="text-sm text-[var(--color-text-secondary)]">Internal transaction ledger</p>
-          </div>
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-1)] p-6"
-        >
-          {error && (
-            <div className="mb-4 rounded border border-[var(--color-negative)]/30 bg-[var(--color-negative-muted)] px-3 py-2 text-sm text-[var(--color-negative)]">
-              {error}
+    <div className="flex min-h-screen flex-col bg-[var(--surface-canvas)]">
+      <div className="flex flex-1 items-center justify-center px-4 py-12">
+        <div className="w-full max-w-[22rem]">
+          <div className="mb-9 text-center">
+            <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-[var(--radius-lg)] bg-[var(--accent)] text-sm font-bold text-[var(--accent-text)]">
+              LL
             </div>
-          )}
+            <h1 className="t-title text-[var(--text-primary)]">Sign in to LedgerLite</h1>
+            <p className="t-body mt-1.5 text-[var(--text-secondary)]">Internal transaction ledger</p>
+          </div>
 
-          <label className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]" htmlFor="username">
-            Username
-          </label>
-          <input
-            id="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoComplete="username"
-            required
-            className="mb-4 w-full rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-          />
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+            {error && <ErrorState message={error} />}
 
-          <label className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]" htmlFor="password">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-            className="mb-6 w-full rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-          />
+            <TextInput
+              label="Username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              autoFocus
+              required
+            />
+            <TextInput
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded bg-[var(--color-accent)] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
-          >
-            {submitting ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
+            <Button type="submit" variant="primary" size="lg" fullWidth loading={submitting} className="mt-2">
+              {submitting ? 'Signing in' : 'Sign in'}
+            </Button>
+          </form>
+
+          <p className="t-caption mt-6 text-center text-[var(--text-tertiary)]">
+            Accounts are issued by an administrator. There is no self-service signup.
+          </p>
+        </div>
       </div>
+
+      <footer className="flex justify-center pb-8">
+        <ThemeToggle />
+      </footer>
     </div>
   )
 }
