@@ -246,6 +246,38 @@ export function AccountDetailPage() {
                 columns={columns}
                 rows={entries.items}
                 rowKey={(row) => row.id}
+                mobileRow={(row) => (
+                  <>
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className="t-row text-ink">
+                        {row.entryType === 'CREDIT' ? 'Money in' : 'Money out'}
+                      </span>
+                      <Money
+                        minorUnits={
+                          row.entryType === 'CREDIT' ? row.amountMinorUnits : -row.amountMinorUnits
+                        }
+                        variant="signed"
+                        className="shrink-0"
+                      />
+                    </span>
+                    <span className="t-micro mt-0.5 flex items-baseline justify-between gap-3">
+                      <span>
+                        {formatShortDate(row.createdAt)} · #{row.transactionId}
+                      </span>
+                      {row.runningBalanceMinorUnits !== null && (
+                        <span>
+                          Balance{' '}
+                          <Money
+                            minorUnits={row.runningBalanceMinorUnits}
+                            currency={data?.currency}
+                            variant="balance"
+                            className="text-[11px] font-normal"
+                          />
+                        </span>
+                      )}
+                    </span>
+                  </>
+                )}
                 emptyState={
                   <EmptyState
                     title="No postings yet"

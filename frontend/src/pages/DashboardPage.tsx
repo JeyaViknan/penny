@@ -222,6 +222,18 @@ export function DashboardPage() {
               rows={data.items}
               rowKey={(row) => row.transactionId}
               onOpenRow={(row) => navigate(`/transfers/${row.transactionId}`)}
+              mobileRow={(row) => (
+                <>
+                  <span className="flex items-baseline justify-between gap-3">
+                    <span className="t-row truncate font-medium text-ink">{row.reference}</span>
+                    <Money minorUnits={row.amountMinorUnits} className="shrink-0" />
+                  </span>
+                  <span className="t-micro mt-0.5 flex items-baseline justify-between gap-3">
+                    <span className="truncate">{counterpartyName(row.creditOwnerUsername)}</span>
+                    <span className="shrink-0">{formatShortDate(row.createdAt)}</span>
+                  </span>
+                </>
+              )}
               emptyState={
                 <EmptyState
                   title="Nothing has moved yet"

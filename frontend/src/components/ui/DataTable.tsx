@@ -39,6 +39,14 @@ interface DataTableProps<T> {
   /** Rendered under the table: counts and page controls. */
   footer?: ReactNode
   caption?: string
+  /**
+   * How one row reads below 768px, where the table is replaced rather than
+   * compressed. A six-column table on a phone is either unreadable or a
+   * horizontal scroll, and horizontal scrolling inside a list is how a layout
+   * announces that it ran out of ideas. Omit it and the table simply scrolls,
+   * which is the right fallback for a table nobody opens on a phone.
+   */
+  mobileRow?: (row: T) => ReactNode
 }
 
 /**
@@ -70,6 +78,7 @@ export function DataTable<T>({
   emptyState,
   footer,
   caption,
+  mobileRow,
 }: DataTableProps<T>) {
   const bodyRef = useRef<HTMLTableSectionElement>(null)
   const [focusedIndex, setFocusedIndex] = useState(0)
@@ -111,10 +120,26 @@ export function DataTable<T>({
 
   return (
     <div className="overflow-hidden rounded-md border border-line bg-surface">
-      {/* Wide tables scroll inside their own container. The page body never
-          scrolls sideways -- a horizontal scrollbar on the document is how a
-          layout announces that it gave up. */}
-      <div className="overflow-x-auto">
+      {/* Below 768 the table is swapped for stacked rows rather than squeezed.
+          Above it, a wide table scrolls inside its own container so the page
+          body never scrolls sideways. */}
+      {mobileRow && (
+        <ul className="md:hidden">
+          {rows.map((row) => (
+            <li key={rowKey(row)} className="border-b border-line last:border-b-0">
+              <button
+                type="button"
+                onClick={onOpenRow ? () => onOpenRow(row) : undefined}
+                disabled={!onOpenRow}
+                className="focus-inset block w-full px-3 py-2.5 text-left disabled:cursor-default"
+              >
+                {mobileRow(row)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className={cn('overflow-x-auto', mobileRow && 'hidden md:block')}>
         <table className="w-full border-collapse text-left">
           {caption && <caption className="sr-only">{caption}</caption>}
           <thead>

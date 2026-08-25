@@ -138,9 +138,9 @@ penny/
 │   └── src/
 │       ├── api/             # axios client, JWT refresh interceptor, endpoints, types
 │       ├── auth/             # AuthContext, route guards
-│       ├── components/ui/   # Design-system primitives (List, Button, Field, Sheet, Toast...)
+│       ├── components/ui/   # Design-system primitives (DataTable, Button, Field, Overlay...)
 │       ├── lib/              # Money parsing + formatting, useAsync, cn
-│       └── pages/            # Login, Overview, Accounts, Activity, Transfer, People, Audit
+│       └── pages/            # Login, Overview, Accounts, Transactions, Transfer, People, Audit
 ├── scripts/seed-demo.sh      # Seeds demo data through the public API (no SQL)
 ├── .github/workflows/ci.yml
 ├── docker-compose.yml
@@ -341,14 +341,43 @@ curl http://localhost:8080/ledger/integrity -H "Authorization: Bearer $ACCESS_TO
 negative of everything on deposit. If a balance were ever conjured without a
 matching debit, this would be non-zero.
 
-**Paged transaction history**
+**Filtered, sorted, paged transaction history**
 
 A CUSTOMER's results are narrowed in SQL to transactions touching their own
 accounts, so pages stay full and totals do not leak other customers' activity.
 
 ```bash
-curl "http://localhost:8080/transfers?page=0&size=20" -H "Authorization: Bearer $ACCESS_TOKEN"
+curl "http://localhost:8080/transfers?q=coffee&type=TRANSFER&type=DEPOSIT&minAmount=1000&sort=AMOUNT&direction=ASC&page=0&size=50" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
+
+Filters are `q` (reference search), `type` (repeatable), `from`/`to`,
+`minAmount`/`maxAmount`, `accountId`, plus `sort` (`DATE`|`AMOUNT`) and
+`direction`. Every filter applies to the count as well as the page, so
+`totalItems` describes the whole matching set rather than what happened to load
+— a filter that only narrows the visible page answers the question wrongly
+instead of declining to answer it.
+
+Two details worth naming. The multi-select `type` filter is why these queries
+are assembled with `NamedParameterJdbcTemplate` rather than the usual
+`(:x IS NULL OR col = :x)` pattern: `IN (:list)` generates invalid SQL for an
+empty list, and `ORDER BY` cannot be parameter-bound at all. `sort` is a
+whitelisted enum, so an unrecognised value is rejected at the edge with a 400
+naming the accepted values and never reaches the SQL builder. And one private
+`where(...)` helper feeds both the page query and its count query, so a filter
+cannot apply to one and not the other.
+
+**Filtered, paged audit trail**
+
+```bash
+curl "http://localhost:8080/audit?action=TRANSFER&entityType=Transaction&actorUserId=2&page=0&size=50" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+This previously returned the entire table on every request. `audit_log` is
+append-only and grows with every login, account opening, status change and
+money movement, so it never shrinks — unbounded was only survivable while the
+dataset was small.
 
 **Freeze or close an account (ADMIN only)**
 
@@ -362,11 +391,49 @@ curl -X PATCH http://localhost:8080/accounts/2/status \
 `CLOSED` is terminal, and closing is refused while the account still holds a
 balance — otherwise the funds would be stranded on the books but unreachable.
 
-**View an account's ledger**
+**An account's statement, with a running balance**
 
 ```bash
-curl http://localhost:8080/ledger/1 -H "Authorization: Bearer $ACCESS_TOKEN"
+curl "http://localhost:8080/ledger/1?page=0&size=50" -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
+
+Each entry carries `runningBalanceMinorUnits` — the account's balance
+immediately after that posting. Without it a statement is just a list of
+movements, and answering "what was the balance on the 14th" means adding them
+up by hand.
+
+The balance is accumulated by a window function over the account's **full**
+history in a subquery, with `LIMIT`/`OFFSET` applied outside it:
+
+```sql
+WITH ordered AS (
+  SELECT le.*,
+         SUM(CASE WHEN le.entry_type = 'CREDIT' THEN le.amount_minor_units
+                  ELSE -le.amount_minor_units END)
+           OVER (ORDER BY le.created_at, le.id
+                 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_balance
+  FROM ledger_entries le WHERE le.account_id = :accountId
+)
+SELECT * FROM ordered ORDER BY created_at DESC, id DESC LIMIT :size OFFSET :offset;
+```
+
+The obvious implementation — paginate first, then accumulate — is wrong, and
+wrong in the way that ships. Both versions agree on page one, because page one
+happens to start at the beginning of history either way; they diverge from page
+two onward. Measured against the live database, the naive form reported
+**−107,500** for a row whose true balance is **372,500**. `AccountLedgerIT`
+asserts page two specifically, for exactly that reason.
+
+**Both legs of one transaction**
+
+```bash
+curl http://localhost:8080/ledger/transaction/8 -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Returns the debit and the credit. `runningBalanceMinorUnits` is `null` here
+rather than zero — the two legs sit on different accounts and share no
+meaningful running total, and returning zero would read as "the balance is nil"
+instead of "not applicable".
 
 ## Running locally
 
@@ -453,68 +520,101 @@ Each service has a health check; `docker compose ps` shows readiness.
 
 ## Design system
 
-The interface is built in Apple's design language — the reference is Wallet,
-Apple Card and Apple Pay rather than a generic dashboard. **Light appearance
-only.** Tokens live in `frontend/src/index.css`; primitives in
+Penny is an instrument of record, and the interface is built to read like one:
+quiet, dense, precise. Hierarchy comes from alignment, rules, weight and
+spacing — not from cards, shadows, gradients or coloured circles. **Light
+appearance only.** Tokens live in `frontend/src/index.css`; primitives in
 `frontend/src/components/ui/`.
 
-What that means concretely:
+Three commitments carry most of the weight:
 
-- **A grouped background with white cards floating on it.** The page is
-  `#F2F2F7` and content sits on white above it. That inversion — grey page,
-  white content — is most of what makes a layout read as iOS rather than as a
-  web page with boxes drawn on it.
-- **Inset grouped lists as the primary structure.** Rounded white containers
-  whose rows divide with a hairline that *starts at the row's text*, not at the
-  card edge. That inset is the single most recognisable detail of an iOS list,
-  and it is why the app doesn't read as a striped table.
-- **SF Pro at Apple's own sizes, weights and tracking.** Tracking is
-  size-specific and tightens as text grows: `-0.030em` at 34px, `0` at 12px,
-  slightly positive at 11px. One global `letter-spacing` is wrong at one end or
-  the other.
-- **Tabular figures for every amount.** Without them digits jitter and column
-  edges wobble as values change.
-- **The card as hero.** Account and total screens lead with a card carrying the
-  balance at display size, because that is the one thing the person came to
-  find out.
-- **Sheets, not dialogs.** Modals rise from the bottom edge with a grabber on
-  small screens and become a centred card on large ones, dimming and receding
-  the page behind them.
-- **Feedback on pointer-down.** Controls scale to 0.97 over 100ms on `:active`.
-  Waiting for the click to acknowledge a press is what makes an interface feel
-  dead.
-- **Three button weights, used with restraint** — filled, tinted, plain. One
-  filled blue button per screen: if everything is primary, nothing is.
+- **13px is the workhorse size.** Not 15, not 17. A ledger row is meaningful
+  mostly by comparison with the rows around it, and comparison is a function of
+  how many rows fit in one eye movement.
+- **Ink is the primary action colour; blue means links and focus, nothing
+  else.** A saturated blue button on every screen is the loudest signal that an
+  interface was assembled rather than designed. Colour is information here:
+  four hues, one meaning each.
+- **Nothing has a radius above 8px, and only floating surfaces cast a shadow.**
+  Content surfaces get a border instead. Radii are 4 (inputs, badges), 6
+  (buttons, surfaces) and 8 (drawers, modals).
 
-### A note on Apple's colours and contrast
+And the decision that surprises people:
 
-Apple's `systemBlue` (`#007AFF`) measures **3.60:1** as text on the grouped
-background and **4.02:1** with white on top of it — it misses WCAG AA in both
-directions. Apple can lean on their own system accessibility settings; a
-browser app cannot. So the palette uses the closest blue to systemBlue that
-clears 4.5:1 *both* ways, and `systemGreen` and the secondary label greys get
-the same treatment.
+- **Outgoing money is ink, not red.** A debit is the most ordinary event in a
+  ledger. Colouring every one of them red makes a normal day's activity look
+  like a page of errors, and leaves nothing to say when something genuinely is
+  wrong. Red is reserved for failures and negative balances.
 
-Every foreground/background pair was measured in-browser rather than assumed:
+Structurally:
 
-| Token | On grouped background |
-|---|---|
-| `--label` | 18.8 |
-| `--label-secondary` | 6.4 |
-| `--label-tertiary` | 4.5 |
-| `--blue` | 4.6 |
-| `--green` | 5.2 |
-| `--red` | 4.8 |
-| `--orange` | 4.7 |
-| white on blue fill | 5.1 |
+- **One table grammar for everything.** Transactions, an account's statement,
+  accounts, people and the audit trail all render through `DataTable`, so
+  learning to read one teaches all five. It is a real `<table>`, not a grid of
+  divs — a grid looks identical and tells assistive technology nothing about
+  which header a cell belongs to.
+- **Fixed vertical rhythm.** Top bar 52px, toolbar 44px, table header 36px,
+  row 40px. The frame lands in the same place on every page so the eye can stop
+  re-finding it.
+- **Width follows content type.** Tables fill the viewport up to 1600px; forms
+  and prose cap at 600px. One `max-w-3xl` for both is how a six-column audit
+  table and a single-field form end up allotted identical space.
+- **The sidebar has three states**: 232px with labels at ≥1280, a 56px icon
+  rail at 1024–1279, and a drawer below that. Below 768 tables restructure into
+  stacked rows rather than scrolling sideways.
+- **Explicit pagination, never infinite scroll.** An auditor needs "1–50 of
+  3,214" and a position they can return to; infinite scroll destroys both and
+  breaks the browser's back button.
+- **The detail drawer is deliberately non-modal.** Opening a transaction must
+  not cost you your place in the list, so arrow keys keep stepping through rows
+  while it is open and the drawer follows. Modals — which do trap focus and
+  lock the page — are kept for the two cases that deserve interruption:
+  confirming something irreversible, and a short creation form.
+- **The invariant is ambient.** "Books balanced" sits in the sidebar footer on
+  every screen for the roles allowed to read it, quiet while it is true. The
+  full figures live on the audit page, where someone has come to check rather
+  than to be reassured.
 
-The `*-fill` variants keep their full-strength system values, because they only
-ever sit behind a white glyph and never carry text.
+### Keyboard
 
-Beyond colour: `:focus-visible` is defined globally as a soft blue halo, focus
-is trapped and restored in sheets, and `prefers-reduced-motion`,
-`prefers-reduced-transparency` and `prefers-contrast` each have real handling
-rather than being ignored.
+The transaction table is fully operable without a mouse. `/` focuses search,
+`↑`/`↓` and `j`/`k` step through rows, `Home`/`End` jump to the ends, `Enter`
+opens the detail drawer and `Escape` closes it and restores focus. Focus is real
+DOM focus on the row element rather than a rendered highlight, so the browser
+scrolls it into view and screen readers announce it. A roving `tabindex` keeps
+the whole table one tab stop instead of hundreds.
+
+### Contrast
+
+Every foreground/background pair is measured in-browser rather than assumed —
+walking the DOM of each page, resolving the composited background behind each
+text node, and checking the ratio against the threshold for that text's actual
+size and weight. Every page passes WCAG AA with a floor of **4.75:1**.
+
+| Token | On sunken `#F6F6F4` | Role |
+|---|---|---|
+| `--ink` `#1A1A17` | 16.5 | Primary text, primary button fill |
+| `--ink-2` `#57574F` | 6.9 | Secondary text |
+| `--ink-3` `#6E6E66` | 4.8 | Column headers, timestamps |
+| `--blue` `#1D4ED8` | 6.2 | Links and focus only |
+| `--positive` `#0F7A3D` | 5.2 | Money in |
+| `--negative` `#B42318` | 6.3 | Errors, negative balances |
+| `--warning` `#8A5A00` | 5.7 | Frozen, needs attention |
+| white on `--ink` | 17.4 | Primary button |
+
+Two notes on how that table came to be. `--ink-3` started at `#8A8A82`, which
+measures **3.21:1** on the sunken background — acceptable for a 24px heading and
+a genuine failure for the 11px column headers it was actually meant for. It was
+darkened until it cleared 4.5:1 at that size. And `--ink-faint` `#A8A8A0` is
+deliberately *below* AA: it is restricted to non-text marks — disabled glyphs,
+placeholder dashes, empty-state rules — and never carries a word the reader
+needs.
+
+Beyond colour: `:focus-visible` is a crisp 2px ring defined globally, focus is
+trapped and restored in modals and restored on drawer close, and
+`prefers-reduced-motion` and `prefers-contrast` each have real handling rather
+than being ignored. Reduced motion drops travel, not feedback — a drawer still
+appears, it just does not slide.
 
 ## Testing
 

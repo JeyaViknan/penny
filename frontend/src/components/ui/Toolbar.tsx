@@ -39,8 +39,11 @@ export function SearchInput({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [shortcut])
 
+  // The minimum width matters: inside the toolbar's scroll container, flex-1
+  // with min-w-0 lets the field collapse to just its magnifier icon on a phone,
+  // and a search box you cannot see is worse than no search box.
   return (
-    <div className="relative min-w-0 flex-1 sm:max-w-72">
+    <div className="relative min-w-[180px] flex-1 sm:max-w-72">
       <IconSearch className="pointer-events-none absolute top-1/2 left-2 h-4 w-4 -translate-y-1/2 text-ink-3" />
       <input
         ref={ref}

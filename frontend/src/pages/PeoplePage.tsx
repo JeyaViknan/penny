@@ -174,6 +174,15 @@ export function PeoplePage() {
               rowKey={(row) => row.id}
               onOpenRow={setSelected}
               selectedKey={selected?.id ?? null}
+              mobileRow={(row) => (
+                <>
+                  <span className="flex items-baseline justify-between gap-3">
+                    <span className="t-row truncate font-medium text-ink">{row.username}</span>
+                    <Badge>{titleCase(row.role)}</Badge>
+                  </span>
+                  <span className="t-micro mt-0.5 block truncate">{row.email}</span>
+                </>
+              )}
               emptyState={
                 <EmptyState
                   title={filtered ? 'Nobody matches those filters' : 'No people yet'}

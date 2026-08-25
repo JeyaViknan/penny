@@ -222,6 +222,21 @@ export function TransactionsPage() {
               rowKey={(row) => row.transactionId}
               onOpenRow={setOpenTransaction}
               selectedKey={openTransaction?.transactionId ?? null}
+              mobileRow={(row) => (
+                <>
+                  <span className="flex items-baseline justify-between gap-3">
+                    <span className="t-row truncate font-medium text-ink">{row.reference}</span>
+                    <Money minorUnits={row.amountMinorUnits} className="shrink-0" />
+                  </span>
+                  <span className="t-micro mt-0.5 flex items-baseline justify-between gap-3">
+                    <span className="truncate">
+                      {counterpartyName(row.debitOwnerUsername)} →{' '}
+                      {counterpartyName(row.creditOwnerUsername)}
+                    </span>
+                    <span className="shrink-0">{formatShortDate(row.createdAt)}</span>
+                  </span>
+                </>
+              )}
               sort={{ key: sortKey, direction } as SortState}
               onSortChange={(next) => {
                 update('sort', next.key)

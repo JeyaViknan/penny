@@ -156,6 +156,25 @@ export function AccountsPage() {
                 rows={rows}
                 rowKey={(row) => row.id}
                 onOpenRow={(row) => navigate(`/accounts/${row.id}`)}
+                mobileRow={(row) => (
+                  <>
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className="t-ident truncate text-ink">{row.accountNumber}</span>
+                      <Money
+                        minorUnits={row.balanceMinorUnits}
+                        currency={row.currency}
+                        variant="balance"
+                        className="shrink-0"
+                      />
+                    </span>
+                    <span className="t-micro mt-0.5 flex items-baseline justify-between gap-3">
+                      <span className="truncate">
+                        {row.ownerUsername ?? 'The institution'} · {titleCase(row.accountType)}
+                      </span>
+                      <Badge tone={statusTone(row.status)}>{statusLabel(row.status)}</Badge>
+                    </span>
+                  </>
+                )}
                 emptyState={
                   <EmptyState
                     title={filtered ? 'No accounts match those filters' : 'No accounts yet'}
