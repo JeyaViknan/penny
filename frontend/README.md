@@ -1,6 +1,6 @@
-# LedgerLite frontend
+# Penny frontend
 
-React + TypeScript + Vite + Tailwind CSS dashboard for the LedgerLite API.
+React + TypeScript + Vite + Tailwind CSS dashboard for the Penny API.
 See the [root README](../README.md) for full project documentation.
 
 ```bash

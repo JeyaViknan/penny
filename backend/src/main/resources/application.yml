@@ -1,10 +1,10 @@
 spring:
   application:
-    name: ledgerlite
+    name: penny
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/ledgerlite}
-    username: ${DB_USERNAME:ledgerlite}
-    password: ${DB_PASSWORD:ledgerlite}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/penny}
+    username: ${DB_USERNAME:penny}
+    password: ${DB_PASSWORD:penny}
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:20}
   flyway:
@@ -18,7 +18,7 @@ server:
     include-message: always
     include-binding-errors: always
 
-ledgerlite:
+penny:
   jwt:
     secret: ${JWT_SECRET:CHANGE_ME_IN_PRODUCTION_THIS_MUST_BE_AT_LEAST_256_BITS_LONG}
     access-token-ttl-minutes: ${JWT_ACCESS_TTL_MINUTES:15}

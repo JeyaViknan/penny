@@ -11,10 +11,10 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.ledgerlite</groupId>
-    <artifactId>ledgerlite</artifactId>
+    <groupId>com.penny</groupId>
+    <artifactId>penny</artifactId>
     <version>0.1.0</version>
-    <name>LedgerLite</name>
+    <name>Penny</name>
     <description>Production-grade double-entry transaction ledger for digital banking</description>
 
     <properties>
@@ -129,7 +129,7 @@
     </dependencyManagement>
 
     <build>
-        <finalName>ledgerlite</finalName>
+        <finalName>penny</finalName>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

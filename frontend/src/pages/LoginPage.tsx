@@ -37,9 +37,9 @@ export function LoginPage() {
         <div className="w-full max-w-[22rem]">
           <div className="mb-9 text-center">
             <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-[var(--radius-lg)] bg-[var(--accent)] text-sm font-bold text-[var(--accent-text)]">
-              LL
+              P
             </div>
-            <h1 className="t-title text-[var(--text-primary)]">Sign in to LedgerLite</h1>
+            <h1 className="t-title text-[var(--text-primary)]">Sign in to Penny</h1>
             <p className="t-body mt-1.5 text-[var(--text-secondary)]">Internal transaction ledger</p>
           </div>
 

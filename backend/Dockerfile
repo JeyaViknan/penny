@@ -17,10 +17,10 @@ RUN mvn -q package -DskipTests
 FROM eclipse-temurin:21-jre-alpine AS runtime
 WORKDIR /app
 
-RUN addgroup -S ledgerlite && adduser -S ledgerlite -G ledgerlite
-COPY --from=build /app/target/ledgerlite.jar app.jar
-RUN chown ledgerlite:ledgerlite app.jar
-USER ledgerlite
+RUN addgroup -S penny && adduser -S penny -G penny
+COPY --from=build /app/target/penny.jar app.jar
+RUN chown penny:penny app.jar
+USER penny
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

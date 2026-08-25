@@ -6,7 +6,7 @@ spring:
     hikari:
       maximum-pool-size: 60
 
-ledgerlite:
+penny:
   vault-account-number: "000000000001"
   jwt:
     secret: test-secret-key-for-integration-tests-only-not-for-production-use-0123456789

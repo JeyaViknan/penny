@@ -80,11 +80,11 @@ jobs:
         with:
           context: backend
           push: false
-          tags: ledgerlite-backend:ci
+          tags: penny-backend:ci
 
       - name: Build frontend image
         uses: docker/build-push-action@v6
         with:
           context: frontend
           push: false
-          tags: ledgerlite-frontend:ci
+          tags: penny-frontend:ci

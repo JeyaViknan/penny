@@ -7,8 +7,8 @@ import type { Role } from './types'
  * bank -- there, the refresh token belongs in an httpOnly cookie and the
  * access token stays in memory only. See README "Future Improvements".
  */
-const ACCESS_TOKEN_KEY = 'ledgerlite.accessToken'
-const REFRESH_TOKEN_KEY = 'ledgerlite.refreshToken'
+const ACCESS_TOKEN_KEY = 'penny.accessToken'
+const REFRESH_TOKEN_KEY = 'penny.refreshToken'
 
 export interface DecodedToken {
   sub: string

@@ -1,4 +1,4 @@
-# LedgerLite
+# Penny
 
 A production-oriented, double-entry transaction ledger for digital banking. The
 core problem this project solves is **correct money movement**, not account
@@ -40,7 +40,7 @@ a `balance` column that gets mutated in place. That approach cannot answer
 the question a real bank must always be able to answer: *prove that no money
 was created or destroyed.*
 
-LedgerLite is built around the opposite constraint: **accounts never carry a
+Penny is built around the opposite constraint: **accounts never carry a
 balance column at all.** A balance is always `SUM(credits) - SUM(debits)`
 over an append-only ledger, computed by a database view. Every posting writes
 exactly one debit and one credit of equal amount in a single transaction, so
@@ -118,9 +118,9 @@ Frontend: Netlify · CI/CD: GitHub Actions
 ## Folder structure
 
 ```
-ledgerLite/
+penny/
 ├── backend/
-│   ├── src/main/java/com/ledgerlite/
+│   ├── src/main/java/com/penny/
 │   │   ├── audit/          # @Audited annotation + AOP aspect, RequestIdFilter
 │   │   ├── config/         # SecurityConfig, OpenApiConfig, property binding
 │   │   ├── controller/     # REST controllers (thin)
@@ -133,7 +133,7 @@ ledgerLite/
 │   │   ├── security/        # JWT, filters, UserPrincipal, AccountAccessGuard
 │   │   └── service/         # UserService, AccountService, AuthService
 │   ├── src/main/resources/db/migration/  # Flyway migrations V1-V6
-│   └── src/test/java/com/ledgerlite/     # Unit + Testcontainers integration tests
+│   └── src/test/java/com/penny/     # Unit + Testcontainers integration tests
 ├── frontend/
 │   └── src/
 │       ├── api/             # axios client, JWT refresh interceptor, endpoints, types
@@ -381,10 +381,10 @@ curl http://localhost:8080/ledger/1 -H "Authorization: Bearer $ACCESS_TOKEN"
 - Docker (for PostgreSQL, or the full stack)
 
 > If you already run PostgreSQL locally it will occupy port 5432 and silently
-> shadow the container, surfacing as a confusing `role "ledgerlite" does not
+> shadow the container, surfacing as a confusing `role "penny" does not
 > exist`. Start the stack on another port instead:
 > `POSTGRES_HOST_PORT=5433 docker compose up -d postgres`, and point the app at
-> it with `DB_URL=jdbc:postgresql://localhost:5433/ledgerlite`.
+> it with `DB_URL=jdbc:postgresql://localhost:5433/penny`.
 
 ### Backend
 

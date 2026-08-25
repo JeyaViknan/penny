@@ -1,11 +1,11 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ledgerlite-postgres
+    container_name: penny-postgres
     environment:
-      POSTGRES_DB: ledgerlite
-      POSTGRES_USER: ledgerlite
-      POSTGRES_PASSWORD: ledgerlite
+      POSTGRES_DB: penny
+      POSTGRES_USER: penny
+      POSTGRES_PASSWORD: penny
     ports:
       # Host port is configurable because 5432 is very often already taken by a
       # locally installed Postgres, which silently shadows this container and
@@ -13,9 +13,9 @@ services:
       # POSTGRES_HOST_PORT=5433 if that happens.
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
-      - ledgerlite-pgdata:/var/lib/postgresql/data
+      - penny-pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ledgerlite -d ledgerlite"]
+      test: ["CMD-SHELL", "pg_isready -U penny -d penny"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -23,11 +23,11 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: ledgerlite-backend
+    container_name: penny-backend
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/ledgerlite
-      DB_USERNAME: ledgerlite
-      DB_PASSWORD: ledgerlite
+      DB_URL: jdbc:postgresql://postgres:5432/penny
+      DB_USERNAME: penny
+      DB_PASSWORD: penny
       JWT_SECRET: local-dev-secret-key-not-for-production-use-change-me-1234567890
     ports:
       - "8080:8080"
@@ -46,7 +46,7 @@ services:
       context: ./frontend
       args:
         VITE_API_BASE_URL: http://localhost:8080
-    container_name: ledgerlite-frontend
+    container_name: penny-frontend
     ports:
       - "5173:80"
     depends_on:
@@ -54,4 +54,4 @@ services:
         condition: service_healthy
 
 volumes:
-  ledgerlite-pgdata:
+  penny-pgdata:

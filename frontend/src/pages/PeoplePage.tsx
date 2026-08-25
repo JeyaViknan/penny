@@ -31,7 +31,7 @@ export function PeoplePage() {
     <div>
       <PageHeader
         title="People"
-        description="Everyone with access to LedgerLite, and what each role is permitted to do."
+        description="Everyone with access to Penny, and what each role is permitted to do."
         action={
           canCreate && (
             <Button variant="primary" iconLeft={<IconPlus className="h-4 w-4" />} onClick={() => setDialogOpen(true)}>

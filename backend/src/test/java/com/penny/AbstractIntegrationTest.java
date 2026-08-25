@@ -1,0 +1,48 @@
+package com.penny;
+
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.PostgreSQLContainer;
+
+/**
+ * Base class for tests that need a real PostgreSQL instance. Every
+ * integration/repository test extends this instead of using H2, so
+ * Flyway migrations, PostgreSQL-specific SQL (FOR UPDATE, IDENTITY
+ * columns, CHECK constraints) and locking behavior are all exercised
+ * against the real database engine. Requests go through MockMvc rather
+ * than a raw HTTP client so the full filter chain (JWT, CORS, exception
+ * handling) runs without the flakiness of managing real sockets in tests.
+ *
+ * <p>The container uses the Testcontainers "singleton" pattern -- started
+ * once in a static initializer and never stopped explicitly -- rather than
+ * the {@code @Container}/{@code @Testcontainers} per-class lifecycle. That
+ * lets every test class share one Postgres instance instead of each
+ * spinning up its own, which is both faster and avoids resource
+ * contention when the whole suite runs.
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+public abstract class AbstractIntegrationTest {
+
+    static final PostgreSQLContainer<?> POSTGRES;
+
+    static {
+        POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+                .withDatabaseName("penny_test")
+                .withUsername("penny")
+                .withPassword("penny")
+                .withReuse(false);
+        POSTGRES.start();
+    }
+
+    @DynamicPropertySource
+    static void datasourceProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+    }
+}

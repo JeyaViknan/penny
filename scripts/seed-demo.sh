@@ -21,9 +21,9 @@ ADMIN_USER="admin"
 ADMIN_PASS="Admin@12345"
 DEMO_PASS="Password123!"
 
-DB_CONTAINER="${DB_CONTAINER:-ledgerlite-postgres}"
-DB_USER="${DB_USER:-ledgerlite}"
-DB_NAME="${DB_NAME:-ledgerlite}"
+DB_CONTAINER="${DB_CONTAINER:-penny-postgres}"
+DB_USER="${DB_USER:-penny}"
+DB_NAME="${DB_NAME:-penny}"
 
 say() { printf '\033[1m%s\033[0m\n' "$1"; }
 
@@ -44,7 +44,7 @@ BOOTSTRAP_HASH='$2a$10$RrMPUyZtBHrXhv.5EsZiyeOHvYsuXjfZhpv8RaUqZRm84GapnPUH2'
 say "Bootstrapping admin user"
 docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c \
   "INSERT INTO users (username, email, password_hash, role)
-   VALUES ('$ADMIN_USER', 'admin@ledgerlite.local', '$BOOTSTRAP_HASH', 'ADMIN')
+   VALUES ('$ADMIN_USER', 'admin@penny.local', '$BOOTSTRAP_HASH', 'ADMIN')
    ON CONFLICT (username) DO NOTHING;" >/dev/null
 
 TOKEN=$(api POST /auth/login "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PASS\"}" | json "['accessToken']")
@@ -52,7 +52,7 @@ TOKEN=$(api POST /auth/login "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMI
 # --- People ---------------------------------------------------------------
 say "Creating people"
 create_user() {
-  api POST /users "{\"username\":\"$1\",\"email\":\"$1@ledgerlite.local\",\"password\":\"$DEMO_PASS\",\"role\":\"$2\"}" "$TOKEN" \
+  api POST /users "{\"username\":\"$1\",\"email\":\"$1@penny.local\",\"password\":\"$DEMO_PASS\",\"role\":\"$2\"}" "$TOKEN" \
     | json "['id']" 2>/dev/null || \
   api GET /users '' "$TOKEN" | python3 -c "
 import sys,json

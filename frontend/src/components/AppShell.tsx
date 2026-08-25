@@ -123,9 +123,9 @@ function Wordmark() {
   return (
     <div className="flex items-center gap-2.5">
       <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[0.6875rem] font-bold tracking-tight text-[var(--accent-text)]">
-        LL
+        P
       </div>
-      <span className="t-subhead text-[var(--text-primary)]">LedgerLite</span>
+      <span className="t-subhead text-[var(--text-primary)]">Penny</span>
     </div>
   )
 }
