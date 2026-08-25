@@ -1,116 +1,131 @@
-import { type ReactNode } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { transfersApi } from '../api/endpoints'
-import { IconArrowLeft } from '../components/Icons'
+import { IconArrowLeft, IconDeposit, IconTransfer, IconWithdraw } from '../components/Icons'
 import { Button } from '../components/ui/Button'
-import { Badge, Card, EmptyState, PageHeader, Skeleton } from '../components/ui/Surface'
+import { ListRow, ListSection } from '../components/ui/List'
+import { EmptyState, Skeleton } from '../components/ui/Surface'
 import { formatAccountNumber, formatDateTime, formatMinorUnits, isVaultSide } from '../lib/money'
 import { useAsync } from '../lib/useAsync'
+import { titleCase } from '../lib/text'
 
+/**
+ * The receipt. Apple leads these with a large glyph and the amount, then puts
+ * the particulars in a grouped list underneath — you see what happened before
+ * you read any of the detail.
+ */
 export function TransferDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const transfer = useAsync(() => transfersApi.get(Number(id)), [id])
   const data = transfer.data
 
-  return (
-    <div className="max-w-lg">
-      <button
-        onClick={() => navigate(-1)}
-        className="t-caption mb-4 inline-flex items-center gap-1.5 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
-      >
-        <IconArrowLeft className="h-3.5 w-3.5" />
-        Back
-      </button>
-
-      {transfer.error ? (
-        <EmptyState
-          title="This transaction could not be opened"
-          description={transfer.error}
-          action={
-            <div className="flex gap-2">
-              <Button onClick={transfer.reload}>Try again</Button>
-              <Button variant="primary" asLink="/activity">
-                View all activity
-              </Button>
-            </div>
-          }
-        />
-      ) : (
-        <>
-          <PageHeader title={`Transaction #${id}`} description="A posted, immutable movement of money." />
-
-          <Card padded={false}>
-            <div className="border-b border-[var(--border-subtle)] px-5 py-7 text-center">
-              <p className="t-label text-[var(--text-tertiary)]">Amount</p>
-              {transfer.loading || !data ? (
-                <Skeleton className="mx-auto mt-3 h-9 w-40" />
-              ) : (
-                <>
-                  <p className="t-figure mt-2 text-[2rem] font-semibold tracking-tight text-[var(--text-primary)]">
-                    {formatMinorUnits(data.amountMinorUnits)}
-                  </p>
-                  <div className="mt-2.5">
-                    <Badge>{data.transactionType}</Badge>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <dl className="divide-y divide-[var(--border-subtle)]">
-              <Row label="Reference" loading={transfer.loading}>
-                {data?.reference}
-              </Row>
-              <Row label="From" loading={transfer.loading}>
-                {data && (
-                  <AccountRef
-                    isVault={isVaultSide(data.transactionType, 'debit')}
-                    id={data.sourceAccountId}
-                    number={data.sourceAccountNumber}
-                  />
-                )}
-              </Row>
-              <Row label="To" loading={transfer.loading}>
-                {data && (
-                  <AccountRef
-                    isVault={isVaultSide(data.transactionType, 'credit')}
-                    id={data.destinationAccountId}
-                    number={data.destinationAccountNumber}
-                  />
-                )}
-              </Row>
-              <Row label="Posted" loading={transfer.loading}>
-                {data && formatDateTime(data.createdAt)}
-              </Row>
-            </dl>
-          </Card>
-        </>
-      )}
-    </div>
-  )
-}
-
-function AccountRef({ isVault, id, number }: { isVault: boolean; id: number; number: string }) {
-  if (isVault) {
-    return <span className="t-caption text-[var(--text-tertiary)]">Cash vault</span>
+  if (transfer.error) {
+    return (
+      <div className="px-4 sm:px-0">
+        <BackButton onClick={() => navigate(-1)} />
+        <div className="list-group">
+          <EmptyState
+            title="This transaction could not be opened"
+            description={transfer.error}
+            action={
+              <div className="flex gap-2">
+                <Button onClick={transfer.reload}>Try again</Button>
+                <Button variant="filled" asLink="/activity">All activity</Button>
+              </div>
+            }
+          />
+        </div>
+      </div>
+    )
   }
+
+  const style = data ? TYPE_STYLE[data.transactionType] : null
+
   return (
-    <Link
-      to={`/accounts/${id}`}
-      className="t-figure text-[0.875rem] transition-colors hover:text-[var(--accent-fg)]"
-    >
-      {formatAccountNumber(number)}
-    </Link>
+    <div>
+      <div className="px-4 sm:px-0">
+        <BackButton onClick={() => navigate(-1)} />
+      </div>
+
+      <div className="mb-8 flex flex-col items-center px-4 text-center sm:px-0">
+        {transfer.loading || !data || !style ? (
+          <>
+            <Skeleton className="h-14 w-14 rounded-full" />
+            <Skeleton className="mt-4 h-11 w-40" />
+            <Skeleton className="mt-3 h-4 w-28" />
+          </>
+        ) : (
+          <>
+            <div
+              className="flex h-14 w-14 items-center justify-center rounded-full text-white"
+              style={{ background: style.color }}
+            >
+              {style.icon}
+            </div>
+            <p className="t-money mt-4 text-[40px] font-semibold leading-none text-[var(--label)]">
+              {formatMinorUnits(data.amountMinorUnits)}
+            </p>
+            <p className="t-subhead mt-2.5 text-[var(--label-secondary)]">
+              {titleCase(data.transactionType)} · {data.reference}
+            </p>
+          </>
+        )}
+      </div>
+
+      <ListSection header="Details" footer="Posted transactions are immutable. Nothing here can be edited or removed.">
+        {transfer.loading || !data ? (
+          <div className="p-4 space-y-3">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+        ) : (
+          <>
+            <ListRow title="Reference" value={data.reference} />
+            <AccountRow
+              label="From"
+              isVault={isVaultSide(data.transactionType, 'debit')}
+              id={data.sourceAccountId}
+              number={data.sourceAccountNumber}
+            />
+            <AccountRow
+              label="To"
+              isVault={isVaultSide(data.transactionType, 'credit')}
+              id={data.destinationAccountId}
+              number={data.destinationAccountNumber}
+            />
+            <ListRow title="Posted" value={formatDateTime(data.createdAt)} />
+            <ListRow title="Transaction" value={<span className="t-money">#{data.transactionId}</span>} />
+          </>
+        )}
+      </ListSection>
+    </div>
   )
 }
 
-function Row({ label, children, loading }: { label: string; children: ReactNode; loading: boolean }) {
+const TYPE_STYLE = {
+  DEPOSIT: { icon: <IconDeposit className="h-7 w-7" />, color: 'var(--green-fill)' },
+  WITHDRAWAL: { icon: <IconWithdraw className="h-7 w-7" />, color: 'var(--orange-fill)' },
+  TRANSFER: { icon: <IconTransfer className="h-7 w-7" />, color: 'var(--blue)' },
+}
+
+/**
+ * Shows "Cash vault" rather than the institution's internal account number —
+ * that number is an implementation detail of double-entry, not something a
+ * person should have to decode.
+ */
+function AccountRow({ label, isVault, id, number }: { label: string; isVault: boolean; id: number; number: string }) {
+  if (isVault) {
+    return <ListRow title={label} value={<span className="text-[var(--label-secondary)]">Cash vault</span>} />
+  }
+  return <ListRow title={label} to={`/accounts/${id}`} value={<span className="t-money">{formatAccountNumber(number)}</span>} />
+}
+
+function BackButton({ onClick }: { onClick: () => void }) {
   return (
-    <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-      <dt className="t-caption text-[var(--text-secondary)]">{label}</dt>
-      <dd className="t-body min-w-0 truncate text-right text-[var(--text-primary)]">
-        {loading ? <Skeleton className="ml-auto h-4 w-28" /> : children}
-      </dd>
-    </div>
+    <button onClick={onClick} className="t-body mb-4 inline-flex items-center gap-0.5 text-[var(--blue)] active:opacity-55">
+      <IconArrowLeft className="h-[18px] w-[18px]" />
+      Back
+    </button>
   )
 }

@@ -1,82 +1,99 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { extractErrorMessage } from '../api/client'
 import { accountsApi, usersApi } from '../api/endpoints'
-import type { AccountResponse } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { IconAccounts, IconPlus } from '../components/Icons'
 import { Button } from '../components/ui/Button'
-import { DataTable, type Column } from '../components/ui/DataTable'
 import { SelectInput } from '../components/ui/Field'
-import { Modal } from '../components/ui/Modal'
-import { Badge, Card, EmptyState, ErrorState, PageHeader } from '../components/ui/Surface'
+import { Glyph, ListRow, ListSection } from '../components/ui/List'
+import { Sheet } from '../components/ui/Sheet'
+import { Badge, EmptyState, ErrorState, PageHeader } from '../components/ui/Surface'
 import { useToast } from '../components/ui/Toast'
 import { formatAccountNumber, formatMinorUnits } from '../lib/money'
 import { useAsync } from '../lib/useAsync'
+import { RowSkeletons } from '../components/TransactionRow'
+import { titleCase } from '../lib/text'
 
 export function AccountsPage() {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const accounts = useAsync(() => accountsApi.list(), [])
-  const [openDialog, setOpenDialog] = useState(false)
+  const [sheetOpen, setSheetOpen] = useState(false)
 
-  const canOpenAccounts = user?.role === 'ADMIN' || user?.role === 'TELLER'
+  const canOpen = user?.role === 'ADMIN' || user?.role === 'TELLER'
   const isStaff = user?.role !== 'CUSTOMER'
+  const list = accounts.data ?? []
 
   return (
     <div>
       <PageHeader
         title="Accounts"
-        description={isStaff ? 'Every customer account on the books.' : 'Accounts held in your name.'}
         action={
-          canOpenAccounts && (
-            <Button variant="primary" iconLeft={<IconPlus className="h-4 w-4" />} onClick={() => setOpenDialog(true)}>
-              Open account
+          canOpen && (
+            <Button variant="tinted" iconLeft={<IconPlus className="h-[18px] w-[18px]" />} onClick={() => setSheetOpen(true)}>
+              Open
             </Button>
           )
         }
       />
 
       {accounts.error && (
-        <div className="mb-4">
+        <div className="mb-6 px-4 sm:px-0">
           <ErrorState message={accounts.error} onRetry={accounts.reload} />
         </div>
       )}
 
-      <Card padded={false}>
-        <DataTable
-          caption="Accounts"
-          columns={columns(isStaff)}
-          rows={accounts.data ?? []}
-          rowKey={(a) => a.id}
-          loading={accounts.loading}
-          onRowClick={(a) => navigate(`/accounts/${a.id}`)}
-          empty={
-            <EmptyState
-              icon={<IconAccounts className="h-5 w-5" />}
-              title={canOpenAccounts ? 'No accounts opened yet' : 'No accounts yet'}
-              description={
-                canOpenAccounts
-                  ? 'Open the first account to start recording deposits and transfers against it.'
-                  : 'Once a teller opens an account in your name it will appear here.'
+      <ListSection
+        footer={
+          isStaff && list.length > 0
+            ? 'The institution’s own cash vault is not listed here — it exists only as the counterparty that keeps deposits and withdrawals balanced.'
+            : undefined
+        }
+      >
+        {accounts.loading ? (
+          <RowSkeletons count={3} />
+        ) : list.length === 0 ? (
+          <EmptyState
+            icon={<IconAccounts className="h-6 w-6" />}
+            title={canOpen ? 'No accounts opened yet' : 'No accounts yet'}
+            description={
+              canOpen
+                ? 'Open the first account to start recording deposits and transfers against it.'
+                : 'Once a teller opens an account in your name it will appear here.'
+            }
+            action={canOpen && <Button variant="filled" onClick={() => setSheetOpen(true)}>Open account</Button>}
+          />
+        ) : (
+          list.map((account) => (
+            <ListRow
+              key={account.id}
+              to={`/accounts/${account.id}`}
+              leading={
+                <Glyph tone={account.accountType === 'SAVINGS' ? 'indigo' : 'blue'}>
+                  <IconAccounts className="h-[18px] w-[18px]" />
+                </Glyph>
               }
-              action={
-                canOpenAccounts && (
-                  <Button variant="secondary" iconLeft={<IconPlus className="h-4 w-4" />} onClick={() => setOpenDialog(true)}>
-                    Open account
-                  </Button>
-                )
+              title={
+                <span className="flex items-center gap-2">
+                  {titleCase(account.accountType)}
+                  {account.status !== 'ACTIVE' && <Badge>{account.status}</Badge>}
+                </span>
               }
+              subtitle={
+                isStaff
+                  ? `${formatAccountNumber(account.accountNumber)} · ${account.ownerUsername ?? '—'}`
+                  : formatAccountNumber(account.accountNumber)
+              }
+              value={<span className="t-money">{formatMinorUnits(account.balanceMinorUnits, account.currency)}</span>}
             />
-          }
-        />
-      </Card>
+          ))
+        )}
+      </ListSection>
 
-      <OpenAccountDialog
-        open={openDialog}
-        onClose={() => setOpenDialog(false)}
+      <OpenAccountSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
         onCreated={() => {
-          setOpenDialog(false)
+          setSheetOpen(false)
           accounts.reload()
         }}
       />
@@ -84,54 +101,10 @@ export function AccountsPage() {
   )
 }
 
-function columns(isStaff: boolean): Column<AccountResponse>[] {
-  const base: Column<AccountResponse>[] = [
-    {
-      key: 'number',
-      header: 'Account number',
-      primary: true,
-      render: (a) => <span className="t-figure text-[0.875rem] text-[var(--text-primary)]">{formatAccountNumber(a.accountNumber)}</span>,
-    },
-  ]
-
-  if (isStaff) {
-    base.push({
-      key: 'owner',
-      header: 'Holder',
-      render: (a) => <span className="text-[var(--text-secondary)]">{a.ownerUsername ?? '—'}</span>,
-    })
-  }
-
-  base.push(
-    { key: 'type', header: 'Type', render: (a) => <span className="t-caption text-[var(--text-secondary)]">{a.accountType}</span> },
-    { key: 'status', header: 'Status', secondary: true, render: (a) => <Badge>{a.status}</Badge> },
-    {
-      key: 'balance',
-      header: 'Balance',
-      align: 'right',
-      render: (a) => (
-        <span className="t-figure whitespace-nowrap text-[0.875rem] text-[var(--text-primary)]">
-          {formatMinorUnits(a.balanceMinorUnits, a.currency)}
-        </span>
-      ),
-    },
-  )
-
-  return base
-}
-
-function OpenAccountDialog({
-  open,
-  onClose,
-  onCreated,
-}: {
-  open: boolean
-  onClose: () => void
-  onCreated: () => void
-}) {
+function OpenAccountSheet({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const { notify } = useToast()
-  // Only fetched while the dialog is open -- there is no reason to pull the
-  // full user list on every visit to the accounts page.
+  // Only fetched while the sheet is open; no reason to pull the full user list
+  // on every visit to the accounts screen.
   const users = useAsync(() => (open ? usersApi.list() : Promise.resolve([])), [open])
   const [ownerUserId, setOwnerUserId] = useState('')
   const [accountType, setAccountType] = useState('CHECKING')
@@ -141,8 +114,8 @@ function OpenAccountDialog({
 
   const customers = (users.data ?? []).filter((u) => u.role === 'CUSTOMER')
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault()
+  async function submit(event?: FormEvent) {
+    event?.preventDefault()
     if (!ownerUserId) {
       setError('Choose which customer this account belongs to.')
       return
@@ -151,7 +124,7 @@ function OpenAccountDialog({
     setSubmitting(true)
     try {
       const account = await accountsApi.create({ ownerUserId: Number(ownerUserId), accountType, currency })
-      notify(`Account ${formatAccountNumber(account.accountNumber)} opened`, 'success')
+      notify(`Account ···· ${account.accountNumber.slice(-4)} opened`, 'success')
       setOwnerUserId('')
       onCreated()
     } catch (err) {
@@ -162,25 +135,17 @@ function OpenAccountDialog({
   }
 
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title="Open an account"
-      description="The account number is generated automatically and cannot be chosen."
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={handleSubmit} loading={submitting}>
-            Open account
-          </Button>
-        </>
-      }
+      description="The account number is generated automatically."
+      confirmLabel="Open account"
+      onConfirm={() => submit()}
+      confirmLoading={submitting}
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={submit} className="space-y-4 pb-2">
         {error && <ErrorState message={error} />}
-
         {/* A picker, not a raw id field -- nobody knows a customer's numeric
             primary key, and asking for one guarantees mistyped accounts. */}
         <SelectInput
@@ -190,7 +155,7 @@ function OpenAccountDialog({
           disabled={users.loading}
           required
         >
-          <option value="">{users.loading ? 'Loading customers…' : 'Select a customer'}</option>
+          <option value="">{users.loading ? 'Loading…' : 'Choose a customer'}</option>
           {customers.map((u) => (
             <option key={u.id} value={u.id}>
               {u.username} · {u.email}
@@ -198,7 +163,7 @@ function OpenAccountDialog({
           ))}
         </SelectInput>
 
-        <SelectInput label="Account type" value={accountType} onChange={(e) => setAccountType(e.target.value)}>
+        <SelectInput label="Type" value={accountType} onChange={(e) => setAccountType(e.target.value)}>
           <option value="CHECKING">Checking</option>
           <option value="SAVINGS">Savings</option>
         </SelectInput>
@@ -210,6 +175,6 @@ function OpenAccountDialog({
           <option value="INR">INR — Indian Rupee</option>
         </SelectInput>
       </form>
-    </Modal>
+    </Sheet>
   )
 }

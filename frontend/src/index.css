@@ -1,461 +1,335 @@
 @import "tailwindcss";
 
 /* ============================================================================
-   Penny design system
+   Penny — built in Apple's design language
 
-   The emotion this interface is built for is *calm confidence*. It is an
-   internal bank ledger: the person using it is moving other people's money and
-   needs to feel precise, not excited. Every decision below serves that -- one
-   restrained accent, generous whitespace, type that establishes hierarchy
-   through weight and spacing rather than colour, and motion that confirms
-   cause and effect without performing.
+   The reference is Wallet / Apple Card / Apple Pay, not a generic "clean SaaS"
+   look. Concretely that means:
 
-   Apple-inspired in principle, not appearance: clarity, hierarchy, physical
-   feedback, disciplined motion.
+   - A grouped background (#F2F2F7) with white cards floating on it. Depth comes
+     from layering two greys, not from borders and shadows.
+   - Inset grouped lists as the primary structure: rounded containers whose rows
+     are divided by hairlines that begin at the content, not at the card edge.
+   - SF Pro at Apple's own sizes and tracking, which is negative on large text
+     and loosens as text gets smaller.
+   - Apple's system colours, used sparingly and semantically.
+   - Light appearance only.
    ========================================================================= */
 
-/* ---------------------------------------------------------------------------
-   Palette primitives. These never change between themes; the semantic tokens
-   below are what flip. Keeping raw values out of components entirely is what
-   makes a theme switch a one-file change.
-   ------------------------------------------------------------------------ */
 :root {
-  /* Graphite, deliberately blue-cool rather than neutral grey -- it reads as
-     screen/ink rather than concrete, and keeps the accent from feeling alien. */
-  --ink-950: #0a0d13;
-  --ink-900: #0f131b;
-  --ink-850: #141926;
-  --ink-800: #1a2030;
-  --ink-750: #212939;
-  --ink-700: #2b3446;
-  --ink-600: #3a4459;
-  --ink-500: #55617a;
-  --ink-400: #7b8699;
-  --ink-300: #a3acbd;
-  --ink-200: #c8ceda;
-  --ink-100: #e4e8ef;
-  --ink-50:  #f2f4f8;
-
-  /* Warm paper for light mode. Pure white is harsh for long sessions and
-     makes every panel edge shout; a hint of warmth settles it down. */
-  --paper-0: #ffffff;
-  --paper-50: #fbfaf9;
-  --paper-100: #f5f4f1;
-  --paper-200: #eceae6;
-  --paper-300: #dedbd5;
-
-  /* One accent. A deep ink blue -- confident and legible on both grounds,
-     without the saturated "SaaS blue" that reads as a template. */
-  --blue-600: #2f5fd0;
-  --blue-500: #3d6fe3;
-  --blue-400: #5b87ea;
-  --blue-300: #8bacf2;
-
-  --green-600: #127a52;
-  --green-500: #1c9464;
-  --green-400: #34b57f;
-
-  --red-600: #b93b30;
-  --red-500: #d4483c;
-  --red-400: #e8695d;
-
-  /* Darker than a typical amber-600: at #a5720c this measured 4.02:1 on the
-     light canvas, and it is used for 11px badge text, which is not "large"
-     under WCAG and so needs 4.5:1. */
-  --amber-600: #855c00;
-  --amber-500: #c68a12;
-  --amber-400: #e0a52c;
-}
-
-/* ---------------------------------------------------------------------------
-   Semantic tokens -- dark is the default, matching the product's context
-   (long sessions, low-light back-office screens).
-   ------------------------------------------------------------------------ */
-:root,
-[data-theme='dark'] {
-  color-scheme: dark;
-
-  --surface-canvas: var(--ink-950);
-  --surface-raised: var(--ink-900);
-  --surface-overlay: var(--ink-850);
-  --surface-sunken: #070a0f;
-  --surface-inset: var(--ink-800);
-  --surface-hover: var(--ink-850);
-  --surface-active: var(--ink-800);
-
-  --border-subtle: #1e2534;
-  --border-default: #283044;
-  --border-strong: #3a4459;
-
-  --text-primary: var(--ink-50);
-  --text-secondary: var(--ink-300);
-  --text-tertiary: var(--ink-400);
-  --text-disabled: var(--ink-500);
-  --text-inverse: var(--ink-950);
-
-  /* Two accents, because one value cannot do both jobs: as a button fill it
-     must stay dark enough for white label text, and as link text on the dark
-     canvas it must be light enough to clear 4.5:1. Using the fill colour for
-     text measured 4.24:1 and failed AA. */
-  --accent: var(--blue-500);
-  --accent-hover: var(--blue-400);
-  --accent-fg: #7ba3f0;
-  --accent-text: #ffffff;
-  --accent-subtle: rgba(61, 111, 227, 0.14);
-  --accent-border: rgba(61, 111, 227, 0.32);
-
-  --positive: var(--green-400);
-  --positive-subtle: rgba(52, 181, 127, 0.13);
-  --negative: var(--red-400);
-  --negative-subtle: rgba(232, 105, 93, 0.13);
-  --warning: var(--amber-400);
-  --warning-subtle: rgba(224, 165, 44, 0.13);
-
-  /* Translucent chrome. Per the material rules: content scrolls *under*
-     floating surfaces rather than being clipped by an opaque strip. */
-  --chrome-bg: rgba(15, 19, 27, 0.72);
-  --chrome-blur: blur(20px) saturate(180%);
-  --scrim: rgba(5, 7, 11, 0.6);
-
-  /* Larger surfaces read as thicker: deeper shadow, not just bigger. */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 16px 40px -8px rgba(0, 0, 0, 0.6);
-  --shadow-xl: 0 32px 72px -16px rgba(0, 0, 0, 0.7);
-}
-
-[data-theme='light'] {
   color-scheme: light;
 
-  --surface-canvas: var(--paper-50);
-  --surface-raised: var(--paper-0);
-  --surface-overlay: var(--paper-0);
-  --surface-sunken: var(--paper-100);
-  --surface-inset: var(--paper-100);
-  --surface-hover: var(--paper-100);
-  --surface-active: var(--paper-200);
+  /* --- Backgrounds -------------------------------------------------------
+     systemGroupedBackground is the canvas; content sits on white cards above
+     it. This inversion (grey page, white content) is what makes an interface
+     read as iOS rather than as a web page with boxes drawn on it. */
+  --bg-grouped: #f2f2f7;
+  --bg-elevated: #ffffff;
+  --bg-grouped-secondary: #ffffff;
 
-  --border-subtle: var(--paper-200);
-  --border-default: var(--paper-300);
-  --border-strong: #c3bfb7;
+  /* Fills for controls that sit *inside* a card -- inputs, segmented controls,
+     pills. Translucent grey so they read as recessed rather than outlined. */
+  --fill-primary: rgba(120, 120, 128, 0.2);
+  --fill-secondary: rgba(120, 120, 128, 0.16);
+  --fill-tertiary: rgba(118, 118, 128, 0.12);
+  --fill-quaternary: rgba(116, 116, 128, 0.08);
 
-  --text-primary: #14171f;
-  --text-secondary: #4e5566;
-  --text-tertiary: #6b7385;
-  --text-disabled: #9aa1b0;
-  --text-inverse: #ffffff;
+  /* --- Separators ---------------------------------------------------------
+     A hairline, not a border. On retina this lands on a true half-pixel. */
+  --separator: rgba(60, 60, 67, 0.29);
+  --separator-opaque: #c6c6c8;
 
-  --accent: var(--blue-600);
-  --accent-hover: var(--blue-500);
-  --accent-fg: #2450b8;
-  --accent-text: #ffffff;
-  --accent-subtle: rgba(47, 95, 208, 0.09);
-  --accent-border: rgba(47, 95, 208, 0.28);
+  /* --- Labels -------------------------------------------------------------
+     Apple's secondaryLabel is rgba(60,60,67,0.6), which measures about 4.0:1
+     on the grouped background and misses WCAG AA for body text. These are
+     deliberately a little darker than the system values so supporting copy
+     clears 4.5:1 -- see the contrast note in the README. */
+  --label: #000000;
+  --label-secondary: rgba(60, 60, 67, 0.86);
+  --label-tertiary: rgba(60, 60, 67, 0.74);
+  --label-quaternary: rgba(60, 60, 67, 0.34);
 
-  --positive: var(--green-600);
-  --positive-subtle: rgba(18, 122, 82, 0.1);
-  --negative: var(--red-600);
-  --negative-subtle: rgba(185, 59, 48, 0.09);
-  --warning: var(--amber-600);
-  --warning-subtle: rgba(165, 114, 12, 0.11);
+  /* --- System colours -----------------------------------------------------
+     Apple's palette. Blue carries every interactive affordance; the rest are
+     strictly semantic, never decorative. */
+  /* Apple's systemBlue (#007AFF) measures 3.60:1 as text on the grouped
+     background and 4.02:1 with white on top of it -- it misses WCAG AA in both
+     directions. Apple can lean on their own accessibility settings; a browser
+     app cannot, so this is the closest blue to systemBlue that clears 4.5:1
+     both ways (4.59 as text, 5.13 behind white). One blue serves both roles.
+     systemGreen gets the same treatment; the *-fill values stay full strength
+     because they only ever back a white glyph, never carry text. */
+  --blue: #0069e0;
+  --blue-pressed: #005ab8;
+  --green: #1e7533;
+  --green-fill: #34c759;
+  --red: #d70015;
+  --red-fill: #ff3b30;
+  --orange: #b25000;
+  --orange-fill: #ff9500;
+  --indigo: #5856d6;
+  --gray: #8e8e93;
+  --gray-2: #aeaeb2;
+  --gray-5: #e5e5ea;
+  --gray-6: #f2f2f7;
 
-  --chrome-bg: rgba(255, 255, 255, 0.76);
-  --chrome-blur: blur(20px) saturate(180%);
-  --scrim: rgba(24, 22, 20, 0.34);
+  /* Tinted backgrounds for status chips. */
+  --green-tint: rgba(52, 199, 89, 0.14);
+  --red-tint: rgba(255, 59, 48, 0.12);
+  --orange-tint: rgba(255, 149, 0, 0.16);
+  --blue-tint: rgba(0, 105, 224, 0.11);
+  --gray-tint: rgba(120, 120, 128, 0.12);
 
-  --shadow-sm: 0 1px 2px rgba(24, 22, 20, 0.06);
-  --shadow-md: 0 4px 14px -2px rgba(24, 22, 20, 0.1);
-  --shadow-lg: 0 16px 40px -8px rgba(24, 22, 20, 0.14);
-  --shadow-xl: 0 32px 72px -16px rgba(24, 22, 20, 0.18);
+  /* --- Elevation ----------------------------------------------------------
+     Almost everything is flat. Shadows are reserved for surfaces that genuinely
+     float above the page: sheets, popovers, the card hero. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-raised: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-sheet: 0 -1px 0 rgba(0, 0, 0, 0.04), 0 20px 60px rgba(0, 0, 0, 0.22);
+
+  /* --- Radii --------------------------------------------------------------
+     iOS continuous-corner values. Cards and grouped lists share 10px; sheets
+     and hero surfaces go larger. */
+  --radius-row: 10px;
+  --radius-card: 12px;
+  --radius-hero: 20px;
+  --radius-sheet: 14px;
+  --radius-control: 10px;
+  --radius-pill: 980px;
+
+  /* --- Motion -------------------------------------------------------------
+     Apple's standard curve is a strong ease-out: motion leaves quickly and
+     settles gently. Durations are short because this is a working tool. */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --duration-press: 100ms;
+  --duration-fast: 180ms;
+  --duration-base: 260ms;
+  --duration-sheet: 380ms;
+
+  --sidebar-width: 15.5rem;
 }
 
 /* ---------------------------------------------------------------------------
-   Expose semantic tokens to Tailwind. Utilities resolve to the var, so they
-   follow the active theme automatically.
+   Tailwind bridge
    ------------------------------------------------------------------------ */
 @theme inline {
-  --font-sans: 'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  /* -apple-system resolves to SF Pro on Apple platforms, which already ships
+     the optical sizing and tracking tables Apple's own apps rely on. */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+    'Helvetica Neue', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
 
-  --color-canvas: var(--surface-canvas);
-  --color-raised: var(--surface-raised);
-  --color-overlay: var(--surface-overlay);
-  --color-sunken: var(--surface-sunken);
-  --color-inset: var(--surface-inset);
-  --color-hover: var(--surface-hover);
-
-  --color-line: var(--border-subtle);
-  --color-line-strong: var(--border-default);
-  --color-line-heavy: var(--border-strong);
-
-  --color-fg: var(--text-primary);
-  --color-fg-muted: var(--text-secondary);
-  --color-fg-subtle: var(--text-tertiary);
-  --color-fg-disabled: var(--text-disabled);
-
-  --color-accent: var(--accent);
-  --color-accent-fg: var(--accent-fg);
-  --color-accent-hover: var(--accent-hover);
-  --color-accent-subtle: var(--accent-subtle);
-  --color-accent-line: var(--accent-border);
-  --color-on-accent: var(--accent-text);
-
-  --color-positive: var(--positive);
-  --color-positive-subtle: var(--positive-subtle);
-  --color-negative: var(--negative);
-  --color-negative-subtle: var(--negative-subtle);
-  --color-warning: var(--warning);
-  --color-warning-subtle: var(--warning-subtle);
-
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 9px;
-  --radius-lg: 13px;
-  --radius-xl: 18px;
-  --radius-2xl: 24px;
-
-  --shadow-sm: var(--shadow-sm);
-  --shadow-md: var(--shadow-md);
-  --shadow-lg: var(--shadow-lg);
-  --shadow-xl: var(--shadow-xl);
-}
-
-/* ---------------------------------------------------------------------------
-   Motion. Durations are short because this is a dense working tool -- anything
-   slower than ~250ms starts to feel like waiting rather than responding.
-
-   The standard curve is a strong ease-out: motion leaves quickly and settles
-   gently, which reads as physical. Reversible transitions use the mirrored
-   curve so the return path matches the outbound one.
-   ------------------------------------------------------------------------ */
-:root {
-  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
-  --ease-in: cubic-bezier(1, 0, 0.68, 0.28);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-
-  --duration-press: 100ms;
-  --duration-fast: 150ms;
-  --duration-base: 220ms;
-  --duration-slow: 320ms;
-
-  --space-header: 3.5rem;
-  --sidebar-width: 15rem;
+  --color-grouped: var(--bg-grouped);
+  --color-elevated: var(--bg-elevated);
+  --color-label: var(--label);
+  --color-label-secondary: var(--label-secondary);
+  --color-label-tertiary: var(--label-tertiary);
+  --color-separator: var(--separator);
+  --color-blue: var(--blue);
+  --color-green: var(--green);
+  --color-red: var(--red);
+  --color-orange: var(--orange);
+  --color-gray: var(--gray);
 }
 
 /* ---------------------------------------------------------------------------
    Base
    ------------------------------------------------------------------------ */
-* {
-  border-color: var(--border-subtle);
-}
-
 html {
   -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  background: var(--surface-canvas);
-  color: var(--text-primary);
+  background: var(--bg-grouped);
+  color: var(--label);
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: 17px;
+  line-height: 1.29;
+  letter-spacing: -0.022em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-synthesis-weight: none;
-  /* Theme flips are eased rather than snapped -- an abrupt full-viewport
-     brightness jump is exactly the kind of change that reads as a glitch. */
-  transition: background-color var(--duration-base) var(--ease-out),
-              color var(--duration-base) var(--ease-out);
 }
 
 /* ---------------------------------------------------------------------------
-   Typography scale.
+   Type scale — Apple's own sizes, weights and tracking.
 
-   Tracking is size-specific, never one global value: large text needs negative
-   tracking because letterforms drift apart as they grow, and small text needs
-   slightly positive tracking to stay legible. Leading moves inversely to size.
+   Tracking is size-specific and tightens as text grows: at 34px letterforms
+   drift apart and need pulling together, while at 11px they need loosening to
+   stay legible. A single global letter-spacing is wrong at one end or the other.
    ------------------------------------------------------------------------ */
-.t-display {
-  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.5rem);
-  line-height: 1.08;
-  letter-spacing: -0.022em;
-  font-weight: 600;
-}
+.t-large-title { font-size: 34px; line-height: 1.06; letter-spacing: -0.030em; font-weight: 700; }
+.t-title1      { font-size: 28px; line-height: 1.12; letter-spacing: -0.028em; font-weight: 700; }
+.t-title2      { font-size: 22px; line-height: 1.18; letter-spacing: -0.026em; font-weight: 700; }
+.t-title3      { font-size: 20px; line-height: 1.2;  letter-spacing: -0.024em; font-weight: 600; }
+.t-headline    { font-size: 17px; line-height: 1.29; letter-spacing: -0.022em; font-weight: 600; }
+.t-body        { font-size: 17px; line-height: 1.29; letter-spacing: -0.022em; font-weight: 400; }
+.t-callout     { font-size: 16px; line-height: 1.31; letter-spacing: -0.020em; font-weight: 400; }
+.t-subhead     { font-size: 15px; line-height: 1.33; letter-spacing: -0.016em; font-weight: 400; }
+.t-footnote    { font-size: 13px; line-height: 1.38; letter-spacing: -0.006em; font-weight: 400; }
+.t-caption     { font-size: 12px; line-height: 1.33; letter-spacing: 0;        font-weight: 400; }
+.t-caption2    { font-size: 11px; line-height: 1.18; letter-spacing: 0.006em;  font-weight: 400; }
 
-.t-title {
-  font-size: 1.375rem;
-  line-height: 1.2;
-  letter-spacing: -0.018em;
-  font-weight: 600;
-}
-
-.t-heading {
-  font-size: 1.0625rem;
-  line-height: 1.3;
-  letter-spacing: -0.012em;
-  font-weight: 600;
-}
-
-.t-subhead {
-  font-size: 0.9375rem;
-  line-height: 1.4;
-  letter-spacing: -0.006em;
-  font-weight: 550;
-}
-
-.t-body {
-  font-size: 0.9375rem;
-  line-height: 1.55;
-  letter-spacing: 0;
-}
-
-.t-caption {
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  letter-spacing: 0.004em;
-}
-
-/* Section labels and table headers. Uppercase needs generous tracking or it
-   collapses into an unreadable block. */
-.t-label {
-  font-size: 0.6875rem;
-  line-height: 1.3;
-  letter-spacing: 0.075em;
+/* Section headers above grouped lists: uppercase, tracked out, tertiary. */
+.t-section {
+  font-size: 13px;
+  line-height: 1.38;
+  letter-spacing: 0.045em;
+  font-weight: 500;
   text-transform: uppercase;
-  font-weight: 600;
+  color: var(--label-tertiary);
 }
 
-/* Money and identifiers. Tabular figures keep columns aligned as values
-   change -- without it, digits jitter and the column edge wobbles. */
-.t-figure {
-  font-family: var(--font-mono);
+/* Currency. Tabular figures stop digits jittering and keep column edges true
+   as values change. The tighter tracking suits large balance displays. */
+.t-money {
   font-variant-numeric: tabular-nums;
-  font-feature-settings: 'zero' 1;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.028em;
+  font-feature-settings: 'tnum' 1;
 }
 
 /* ---------------------------------------------------------------------------
-   Focus. Keyboard users previously got nothing at all. :focus-visible keeps
-   the ring off mouse clicks while guaranteeing it for keyboard traversal.
+   Grouped list — the load-bearing pattern.
+
+   A white rounded container whose rows are divided by hairlines that start at
+   the content rather than the container edge. That inset is what makes the
+   separator read as belonging to the row's text instead of cutting the card
+   in half, and it is the single most recognisable detail of an iOS list.
+   ------------------------------------------------------------------------ */
+.list-group {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.list-row + .list-row {
+  box-shadow: inset 0 0.5px 0 var(--separator);
+}
+
+/* The inset itself: the hairline stops short of the left edge by the width of
+   the row's leading content. */
+.list-row-inset + .list-row-inset::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--row-inset, 16px);
+  right: 0;
+  height: 0.5px;
+  background: var(--separator);
+}
+
+.list-row-inset + .list-row-inset {
+  box-shadow: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Focus. Apple's focus ring is a soft blue halo rather than a hard outline.
+   :focus-visible keeps it off mouse clicks and guaranteed for keyboard use.
    ------------------------------------------------------------------------ */
 :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-xs);
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(0, 105, 224, 0.38);
+  border-radius: 6px;
+}
+
+/* Controls that already carry their own radius keep it under the halo. */
+button:focus-visible,
+a:focus-visible,
+[role='button']:focus-visible {
+  border-radius: var(--radius-control);
+}
+
+/* Display-size number fields opt out of the halo: a 4px ring around 52px text
+   reads as a form field and fights the "this figure is the point of the screen"
+   hierarchy. Focus is still shown, as an underline that belongs to the figure.
+
+   This lives here rather than as a utility class because the rule above is
+   unlayered, and unlayered CSS outranks Tailwind's utility layer regardless of
+   specificity -- a `focus-visible:` utility would silently lose. */
+.amount-field:focus-visible {
+  box-shadow: inset 0 -3px 0 var(--blue);
+  border-radius: 0;
 }
 
 ::selection {
-  background: var(--accent-subtle);
-  color: var(--text-primary);
-}
-
-/* Scrollbars, styled so they belong to the surface rather than the OS. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
-}
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-*::-webkit-scrollbar-thumb {
-  background: var(--border-default);
-  border-radius: 999px;
-  border: 3px solid transparent;
-  background-clip: content-box;
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--border-strong);
-  background-clip: content-box;
+  background: rgba(0, 105, 224, 0.22);
 }
 
 /* ---------------------------------------------------------------------------
-   Keyframes.
-
-   Surfaces materialise rather than simply fading: scale and opacity move
-   together so the panel reads as a real object arriving. Travel distances are
-   small (8-12px) because a large slide draws attention to the animation
-   itself instead of to the content that arrived.
+   Scrollbars — thin and unobtrusive, the way macOS overlay scrollers behave.
    ------------------------------------------------------------------------ */
-@keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 999px;
+  border: 2.5px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.34); background-clip: content-box; }
+
+/* ---------------------------------------------------------------------------
+   Motion
+   ------------------------------------------------------------------------ */
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+
+/* Sheets rise from the bottom edge and leave the same way, so the surface
+   keeps one consistent home rather than appearing to teleport. */
+@keyframes sheet-up {
+  from { opacity: 0; transform: translateY(16px) scale(0.985) }
+  to   { opacity: 1; transform: translateY(0) scale(1) }
 }
 
-@keyframes modal-in {
-  from { opacity: 0; transform: translateY(12px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes toast-in {
-  from { opacity: 0; transform: translateY(10px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes sheet-up-mobile {
+  from { transform: translateY(100%) }
+  to   { transform: translateY(0) }
 }
 
 @keyframes view-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(5px) }
+  to   { opacity: 1; transform: translateY(0) }
 }
 
 @keyframes drawer-in {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
+  from { transform: translateX(-100%) }
+  to   { transform: translateX(0) }
 }
 
-/* Route transitions are deliberately understated: a short lift and fade marks
-   that content changed without making navigation feel slow. */
-.view-enter {
-  animation: view-in var(--duration-base) var(--ease-out) both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .view-enter { animation: fade-in var(--duration-fast) linear both; }
-}
+.view-enter { animation: view-in var(--duration-base) var(--ease) both; }
 
 /* ---------------------------------------------------------------------------
-   Accessibility preferences.
-
-   Reduced motion does not mean no feedback -- it means a gentler,
-   non-vestibular equivalent. Opacity and colour changes that aid comprehension
-   are kept; travel, springs and overshoot are dropped.
+   Accessibility preferences. Reduced motion means a gentler equivalent, not the
+   removal of feedback: travel and scale are dropped, opacity is kept.
    ------------------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  .view-enter { animation: fade-in var(--duration-fast) linear both; }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  :root,
-  [data-theme='dark'] {
-    --chrome-bg: var(--ink-900);
-    --chrome-blur: none;
-  }
-  [data-theme='light'] {
-    --chrome-bg: var(--paper-0);
-    --chrome-blur: none;
+  :root {
+    --fill-tertiary: #e8e8ed;
+    --fill-quaternary: #efeff4;
+    --separator: #c6c6c8;
   }
 }
 
 @media (prefers-contrast: more) {
-  :root,
-  [data-theme='dark'] {
-    --border-subtle: #4a5468;
-    --border-default: #5d6980;
-    --text-secondary: var(--ink-100);
-    --text-tertiary: var(--ink-200);
-    --accent-fg: #a8c4f7;
-  }
-  [data-theme='light'] {
-    --border-subtle: #9a958c;
-    --border-default: #6f6b64;
-    --text-secondary: #2a2d36;
-    --text-tertiary: #3c414d;
+  :root {
+    --label-secondary: rgba(60, 60, 67, 0.92);
+    --label-tertiary: rgba(60, 60, 67, 0.8);
+    --separator: rgba(60, 60, 67, 0.55);
+    --blue: #0040dd;
   }
 }

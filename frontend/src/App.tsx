@@ -13,60 +13,57 @@ import { NotFoundPage } from './pages/NotFoundPage'
 import { PeoplePage } from './pages/PeoplePage'
 import { TransferDetailPage } from './pages/TransferDetailPage'
 import { TransferPage } from './pages/TransferPage'
-import { ThemeProvider } from './theme/ThemeContext'
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
+    <ToastProvider>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
 
+          <Route
+            element={
+              <RequireAuth>
+                <AppShell />
+              </RequireAuth>
+            }
+          >
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/accounts" element={<AccountsPage />} />
+            <Route path="/accounts/:id" element={<AccountDetailPage />} />
+            <Route path="/activity" element={<ActivityPage />} />
+            <Route path="/transfers/:id" element={<TransferDetailPage />} />
             <Route
+              path="/transfer"
               element={
-                <RequireAuth>
-                  <AppShell />
-                </RequireAuth>
+                <RequireRole roles={['CUSTOMER', 'TELLER', 'ADMIN']}>
+                  <TransferPage />
+                </RequireRole>
               }
-            >
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/accounts" element={<AccountsPage />} />
-              <Route path="/accounts/:id" element={<AccountDetailPage />} />
-              <Route path="/activity" element={<ActivityPage />} />
-              <Route path="/transfers/:id" element={<TransferDetailPage />} />
-              <Route
-                path="/transfer"
-                element={
-                  <RequireRole roles={['CUSTOMER', 'TELLER', 'ADMIN']}>
-                    <TransferPage />
-                  </RequireRole>
-                }
-              />
-              <Route
-                path="/people"
-                element={
-                  <RequireRole roles={['ADMIN', 'AUDITOR']}>
-                    <PeoplePage />
-                  </RequireRole>
-                }
-              />
-              <Route
-                path="/audit"
-                element={
-                  <RequireRole roles={['AUDITOR', 'ADMIN']}>
-                    <AuditPage />
-                  </RequireRole>
-                }
-              />
-              {/* A real 404 rather than a silent redirect home -- bouncing the
-                  user without explanation makes a mistyped URL look like the
-                  app losing their place. */}
-              <Route path="*" element={<NotFoundPage />} />
-            </Route>
-          </Routes>
-        </AuthProvider>
-      </ToastProvider>
-    </ThemeProvider>
+            />
+            <Route
+              path="/people"
+              element={
+                <RequireRole roles={['ADMIN', 'AUDITOR']}>
+                  <PeoplePage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/audit"
+              element={
+                <RequireRole roles={['AUDITOR', 'ADMIN']}>
+                  <AuditPage />
+                </RequireRole>
+              }
+            />
+            {/* A real 404 rather than a silent redirect home -- bouncing someone
+                without explanation makes a mistyped URL look like the app
+                losing their place. */}
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
+        </Routes>
+      </AuthProvider>
+    </ToastProvider>
   )
 }

@@ -5,7 +5,6 @@ import { useAuth } from '../auth/AuthContext'
 import { Button } from '../components/ui/Button'
 import { TextInput } from '../components/ui/Field'
 import { ErrorState } from '../components/ui/Surface'
-import { ThemeToggle } from '../components/ui/ThemeToggle'
 
 export function LoginPage() {
   const { user, login } = useAuth()
@@ -32,51 +31,57 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--surface-canvas)]">
-      <div className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-[22rem]">
-          <div className="mb-9 text-center">
-            <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-[var(--radius-lg)] bg-[var(--accent)] text-sm font-bold text-[var(--accent-text)]">
-              P
+    <div className="flex min-h-screen items-center justify-center bg-[var(--bg-grouped)] px-5 py-12">
+      <div className="w-full max-w-[22rem]">
+        <div className="mb-9 flex flex-col items-center text-center">
+          <div className="mb-5 flex h-[60px] w-[60px] items-center justify-center rounded-[15px] bg-[var(--blue)] text-[30px] font-bold text-white shadow-[var(--shadow-raised)]">
+            P
+          </div>
+          <h1 className="t-title1 text-[var(--label)]">Sign in to Penny</h1>
+          <p className="t-subhead mt-2 text-[var(--label-secondary)]">Internal transaction ledger</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          {error && <ErrorState message={error} />}
+
+          <div className="list-group">
+            <div className="list-row list-row-inset relative px-4 py-2.5">
+              <TextInput
+                label="Username"
+                hideLabel
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                autoFocus
+                required
+                className="bg-transparent px-0 focus:bg-transparent focus:shadow-none"
+              />
             </div>
-            <h1 className="t-title text-[var(--text-primary)]">Sign in to Penny</h1>
-            <p className="t-body mt-1.5 text-[var(--text-secondary)]">Internal transaction ledger</p>
+            <div className="list-row list-row-inset relative px-4 py-2.5">
+              <TextInput
+                label="Password"
+                hideLabel
+                placeholder="Password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+                className="bg-transparent px-0 focus:bg-transparent focus:shadow-none"
+              />
+            </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            {error && <ErrorState message={error} />}
+          <Button type="submit" variant="filled" size="lg" fullWidth loading={submitting}>
+            {submitting ? 'Signing in' : 'Sign in'}
+          </Button>
+        </form>
 
-            <TextInput
-              label="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              autoFocus
-              required
-            />
-            <TextInput
-              label="Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-
-            <Button type="submit" variant="primary" size="lg" fullWidth loading={submitting} className="mt-2">
-              {submitting ? 'Signing in' : 'Sign in'}
-            </Button>
-          </form>
-
-          <p className="t-caption mt-6 text-center text-[var(--text-tertiary)]">
-            Accounts are issued by an administrator. There is no self-service signup.
-          </p>
-        </div>
+        <p className="t-footnote mt-6 text-center text-[var(--label-tertiary)]">
+          Accounts are issued by an administrator. There is no self-service signup.
+        </p>
       </div>
-
-      <footer className="flex justify-center pb-8">
-        <ThemeToggle />
-      </footer>
     </div>
   )
 }

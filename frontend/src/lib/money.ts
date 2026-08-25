@@ -73,3 +73,21 @@ export function isVaultSide(
   if (transactionType === 'WITHDRAWAL') return side === 'credit'
   return false
 }
+
+/**
+ * Dates as a person would say them. "Today" and "Yesterday" carry more meaning
+ * at a glance than a formatted date, which is how Wallet labels recent activity;
+ * anything older falls back to a real date.
+ */
+export function formatRelativeDate(iso: string): string {
+  const then = new Date(iso)
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const days = Math.floor((startOfToday.getTime() - new Date(then.getFullYear(), then.getMonth(), then.getDate()).getTime()) / 86_400_000)
+
+  if (days === 0) return `Today at ${then.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+  if (days === 1) return 'Yesterday'
+  if (days < 7) return then.toLocaleDateString('en-US', { weekday: 'long' })
+  if (then.getFullYear() === now.getFullYear()) return then.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return then.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}

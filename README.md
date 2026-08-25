@@ -107,7 +107,7 @@ Validation · Spring Data JDBC (not JPA/Hibernate) · PostgreSQL · Flyway · JW
 · springdoc-openapi (Swagger UI) · Docker
 
 **Frontend** — React 19 · TypeScript · Vite · Tailwind CSS v4 · Axios ·
-React Router
+React Router · SF Pro (system font), light appearance only
 
 **Testing** — JUnit 5 · MockMvc · Testcontainers (real PostgreSQL, no H2) ·
 Mockito · JaCoCo (85% coverage gate)
@@ -138,8 +138,7 @@ penny/
 │   └── src/
 │       ├── api/             # axios client, JWT refresh interceptor, endpoints, types
 │       ├── auth/             # AuthContext, route guards
-│       ├── components/ui/   # Design-system primitives (Button, Field, DataTable, Modal, Toast...)
-│       ├── theme/            # Light/dark/system theme context
+│       ├── components/ui/   # Design-system primitives (List, Button, Field, Sheet, Toast...)
 │       ├── lib/              # Money parsing + formatting, useAsync, cn
 │       └── pages/            # Login, Overview, Accounts, Activity, Transfer, People, Audit
 ├── scripts/seed-demo.sh      # Seeds demo data through the public API (no SQL)
@@ -454,57 +453,68 @@ Each service has a health check; `docker compose ps` shows readiness.
 
 ## Design system
 
-The frontend is built on one token set rather than ad-hoc styling, so a change
-to spacing, radius, elevation or colour is a single-file change. Tokens live in
-`frontend/src/index.css`; primitives in `frontend/src/components/ui/`.
+The interface is built in Apple's design language — the reference is Wallet,
+Apple Card and Apple Pay rather than a generic dashboard. **Light appearance
+only.** Tokens live in `frontend/src/index.css`; primitives in
+`frontend/src/components/ui/`.
 
-The interface is built for **calm confidence** — the person using it is moving
-other people's money and needs to feel precise, not excited. That drives the
-restraint: one accent colour used only for interactive elements, hierarchy
-built from weight and spacing rather than decoration, and motion that confirms
-cause and effect without performing.
+What that means concretely:
 
-Specific decisions worth calling out, drawn from Apple's interface and motion
-guidance:
+- **A grouped background with white cards floating on it.** The page is
+  `#F2F2F7` and content sits on white above it. That inversion — grey page,
+  white content — is most of what makes a layout read as iOS rather than as a
+  web page with boxes drawn on it.
+- **Inset grouped lists as the primary structure.** Rounded white containers
+  whose rows divide with a hairline that *starts at the row's text*, not at the
+  card edge. That inset is the single most recognisable detail of an iOS list,
+  and it is why the app doesn't read as a striped table.
+- **SF Pro at Apple's own sizes, weights and tracking.** Tracking is
+  size-specific and tightens as text grows: `-0.030em` at 34px, `0` at 12px,
+  slightly positive at 11px. One global `letter-spacing` is wrong at one end or
+  the other.
+- **Tabular figures for every amount.** Without them digits jitter and column
+  edges wobble as values change.
+- **The card as hero.** Account and total screens lead with a card carrying the
+  balance at display size, because that is the one thing the person came to
+  find out.
+- **Sheets, not dialogs.** Modals rise from the bottom edge with a grabber on
+  small screens and become a centred card on large ones, dimming and receding
+  the page behind them.
+- **Feedback on pointer-down.** Controls scale to 0.97 over 100ms on `:active`.
+  Waiting for the click to acknowledge a press is what makes an interface feel
+  dead.
+- **Three button weights, used with restraint** — filled, tinted, plain. One
+  filled blue button per screen: if everything is primary, nothing is.
 
-- **Feedback on pointer-down, not on release.** Buttons scale to 0.97 over
-  100ms on `:active`. Waiting for `click` to acknowledge a press is the single
-  thing that makes an interface feel dead.
-- **Size-specific tracking.** Large text gets negative letter-spacing
-  (`-0.022em` at display size) because letterforms drift apart as they grow;
-  small uppercase labels get `+0.075em` or they collapse into a block. A single
-  global `letter-spacing` is wrong somewhere.
-- **Tabular figures for money.** Without them, digits jitter and column edges
-  wobble as values change.
-- **Tables restructure on mobile, they do not shrink.** Below `md` each row
-  becomes a card driven by the same column definitions, so the two layouts
-  cannot disagree about what a row contains.
-- **Enter and exit along the same path.** The mobile drawer arrives from the
-  left and leaves to the left; modals grow in from slightly small and low.
-- **Three-state theme** (light / dark / follow the system), because a two-state
-  toggle cannot express "respect what I already chose at the OS level".
-- **Accessibility is measured, not assumed.** Every foreground/background pair
-  clears WCAG AA in both themes — see the table below. `:focus-visible` rings
-  are defined globally, and `prefers-reduced-motion`,
-  `prefers-reduced-transparency` and `prefers-contrast` each have real
-  handling rather than being ignored.
+### A note on Apple's colours and contrast
 
-Measured contrast ratios (AA needs 4.5:1 for normal text):
+Apple's `systemBlue` (`#007AFF`) measures **3.60:1** as text on the grouped
+background and **4.02:1** with white on top of it — it misses WCAG AA in both
+directions. Apple can lean on their own system accessibility settings; a
+browser app cannot. So the palette uses the closest blue to systemBlue that
+clears 4.5:1 *both* ways, and `systemGreen` and the secondary label greys get
+the same treatment.
 
-| Token | Dark | Light |
-|---|---|---|
-| `--text-primary` | 17.7 | 17.2 |
-| `--text-secondary` | 8.5 | 7.2 |
-| `--text-tertiary` | 5.3 | 4.6 |
-| `--accent-fg` | 7.7 | 6.9 |
-| `--positive` | 7.5 | 5.1 |
-| `--negative` | 6.1 | 5.4 |
-| `--warning` | 8.9 | 5.7 |
-| white on accent fill | 4.6 | 5.7 |
+Every foreground/background pair was measured in-browser rather than assumed:
 
-The accent exists as two tokens on purpose: as a button fill it must stay dark
-enough for white label text, and as link text it must be light enough to clear
-4.5:1. Using one value for both measured 4.24:1 and failed.
+| Token | On grouped background |
+|---|---|
+| `--label` | 18.8 |
+| `--label-secondary` | 6.4 |
+| `--label-tertiary` | 4.5 |
+| `--blue` | 4.6 |
+| `--green` | 5.2 |
+| `--red` | 4.8 |
+| `--orange` | 4.7 |
+| white on blue fill | 5.1 |
+
+The `*-fill` variants keep their full-strength system values, because they only
+ever sit behind a white glyph and never carry text.
+
+Beyond colour: `:focus-visible` is defined globally as a soft blue halo, focus
+is trapped and restored in sheets, and `prefers-reduced-motion`,
+`prefers-reduced-transparency` and `prefers-contrast` each have real handling
+rather than being ignored.
 
 ## Testing
 

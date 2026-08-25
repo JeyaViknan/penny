@@ -1,17 +1,17 @@
 import { useState, type FormEvent } from 'react'
 import { extractErrorMessage } from '../api/client'
 import { usersApi } from '../api/endpoints'
-import type { Role, UserResponse } from '../api/types'
+import type { Role } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { IconPlus, IconUsers } from '../components/Icons'
 import { Button } from '../components/ui/Button'
-import { DataTable, type Column } from '../components/ui/DataTable'
 import { SelectInput, TextInput } from '../components/ui/Field'
-import { Modal } from '../components/ui/Modal'
-import { Badge, Card, EmptyState, ErrorState, PageHeader } from '../components/ui/Surface'
+import { Glyph, ListRow, ListSection } from '../components/ui/List'
+import { Sheet } from '../components/ui/Sheet'
+import { Badge, EmptyState, ErrorState, PageHeader } from '../components/ui/Surface'
 import { useToast } from '../components/ui/Toast'
-import { formatDate } from '../lib/money'
 import { useAsync } from '../lib/useAsync'
+import { RowSkeletons } from '../components/TransactionRow'
 
 const ROLE_DESCRIPTIONS: Record<Role, string> = {
   CUSTOMER: 'Sees only their own accounts and transfers.',
@@ -20,55 +20,72 @@ const ROLE_DESCRIPTIONS: Record<Role, string> = {
   ADMIN: 'Full access, including account status and user management.',
 }
 
+const ROLE_TONE: Record<Role, 'blue' | 'green' | 'orange' | 'gray'> = {
+  ADMIN: 'blue',
+  TELLER: 'green',
+  AUDITOR: 'orange',
+  CUSTOMER: 'gray',
+}
+
 export function PeoplePage() {
   const { user } = useAuth()
   const users = useAsync(() => usersApi.list(), [])
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   const canCreate = user?.role === 'ADMIN'
+  const list = users.data ?? []
 
   return (
     <div>
       <PageHeader
         title="People"
-        description="Everyone with access to Penny, and what each role is permitted to do."
         action={
           canCreate && (
-            <Button variant="primary" iconLeft={<IconPlus className="h-4 w-4" />} onClick={() => setDialogOpen(true)}>
-              Add person
+            <Button variant="tinted" iconLeft={<IconPlus className="h-[18px] w-[18px]" />} onClick={() => setSheetOpen(true)}>
+              Add
             </Button>
           )
         }
       />
 
       {users.error && (
-        <div className="mb-4">
+        <div className="mb-6 px-4 sm:px-0">
           <ErrorState message={users.error} onRetry={users.reload} />
         </div>
       )}
 
-      <Card padded={false}>
-        <DataTable
-          caption="People with access"
-          columns={COLUMNS}
-          rows={users.data ?? []}
-          rowKey={(u) => u.id}
-          loading={users.loading}
-          empty={
-            <EmptyState
-              icon={<IconUsers className="h-5 w-5" />}
-              title="No one to show"
-              description="People with access to the ledger will be listed here."
+      <ListSection footer="Roles decide what each person can see and do. They are enforced on the server, not just hidden in the interface.">
+        {users.loading ? (
+          <RowSkeletons count={4} />
+        ) : list.length === 0 ? (
+          <EmptyState
+            icon={<IconUsers className="h-6 w-6" />}
+            title="No one to show"
+            description="People with access to the ledger will be listed here."
+          />
+        ) : (
+          list.map((person) => (
+            <ListRow
+              key={person.id}
+              leading={
+                <Glyph tone={ROLE_TONE[person.role]}>
+                  <span className="text-[13px] font-semibold uppercase">{person.username.slice(0, 1)}</span>
+                </Glyph>
+              }
+              title={person.username}
+              subtitle={person.email}
+              value={<Badge>{person.role}</Badge>}
+              valueSubtitle={person.enabled ? undefined : 'Disabled'}
             />
-          }
-        />
-      </Card>
+          ))
+        )}
+      </ListSection>
 
-      <AddPersonDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+      <AddPersonSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
         onCreated={() => {
-          setDialogOpen(false)
+          setSheetOpen(false)
           users.reload()
         }}
       />
@@ -76,38 +93,7 @@ export function PeoplePage() {
   )
 }
 
-const COLUMNS: Column<UserResponse>[] = [
-  {
-    key: 'username',
-    header: 'Username',
-    primary: true,
-    render: (u) => <span className="text-[var(--text-primary)]">{u.username}</span>,
-  },
-  { key: 'email', header: 'Email', render: (u) => <span className="t-caption text-[var(--text-secondary)]">{u.email}</span> },
-  { key: 'role', header: 'Role', secondary: true, render: (u) => <Badge>{u.role}</Badge> },
-  {
-    key: 'status',
-    header: 'Status',
-    hideOnMobile: true,
-    render: (u) => <Badge tone={u.enabled ? 'positive' : 'warning'}>{u.enabled ? 'ENABLED' : 'DISABLED'}</Badge>,
-  },
-  {
-    key: 'created',
-    header: 'Joined',
-    align: 'right',
-    render: (u) => <span className="t-caption text-[var(--text-tertiary)]">{formatDate(u.createdAt)}</span>,
-  },
-]
-
-function AddPersonDialog({
-  open,
-  onClose,
-  onCreated,
-}: {
-  open: boolean
-  onClose: () => void
-  onCreated: () => void
-}) {
+function AddPersonSheet({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const { notify } = useToast()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
@@ -127,21 +113,21 @@ function AddPersonDialog({
   }
 
   /**
-   * Mirrors the server's Bean Validation rules so problems surface as the
-   * person types rather than after a round trip. The server remains the
-   * authority -- this is a courtesy, not the enforcement point.
+   * Mirrors the server's Bean Validation rules so problems surface as the person
+   * types rather than after a round trip. The server remains the authority --
+   * this is a courtesy, not the enforcement point.
    */
   function validate(): boolean {
     const next: Record<string, string> = {}
-    if (username.trim().length < 3) next.username = 'Must be at least 3 characters.'
+    if (username.trim().length < 3) next.username = 'At least 3 characters.'
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) next.email = 'Enter a valid email address.'
-    if (password.length < 8) next.password = 'Must be at least 8 characters.'
+    if (password.length < 8) next.password = 'At least 8 characters.'
     setErrors(next)
     return Object.keys(next).length === 0
   }
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault()
+  async function submit(event?: FormEvent) {
+    event?.preventDefault()
     setFormError(null)
     if (!validate()) return
 
@@ -159,36 +145,20 @@ function AddPersonDialog({
   }
 
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={() => {
         reset()
         onClose()
       }}
       title="Add a person"
-      description="They will be able to sign in immediately with the password you set."
-      size="md"
-      footer={
-        <>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              reset()
-              onClose()
-            }}
-            disabled={submitting}
-          >
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={handleSubmit} loading={submitting}>
-            Add person
-          </Button>
-        </>
-      }
+      description="They can sign in immediately with the password you set."
+      confirmLabel="Add person"
+      onConfirm={() => submit()}
+      confirmLoading={submitting}
     >
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <form onSubmit={submit} className="space-y-4 pb-2" noValidate>
         {formError && <ErrorState message={formError} />}
-
         <TextInput
           label="Username"
           value={username}
@@ -198,7 +168,6 @@ function AddPersonDialog({
           }}
           error={errors.username || undefined}
           autoComplete="off"
-          autoFocus
         />
         <TextInput
           label="Email"
@@ -220,7 +189,7 @@ function AddPersonDialog({
             setErrors((p) => ({ ...p, password: '' }))
           }}
           error={errors.password || undefined}
-          hint="At least 8 characters. Share it with them over a secure channel."
+          hint="Share it over a secure channel."
           autoComplete="new-password"
         />
         <SelectInput label="Role" value={role} onChange={(e) => setRole(e.target.value as Role)} hint={ROLE_DESCRIPTIONS[role]}>
@@ -230,6 +199,6 @@ function AddPersonDialog({
           <option value="ADMIN">Administrator</option>
         </SelectInput>
       </form>
-    </Modal>
+    </Sheet>
   )
 }

@@ -3,44 +3,29 @@ import { Link } from 'react-router-dom'
 import { cn } from '../../lib/cn'
 import { Spinner } from './Spinner'
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
+type Variant = 'filled' | 'tinted' | 'plain' | 'destructive'
 type Size = 'sm' | 'md' | 'lg'
 
+/**
+ * Apple's three button weights, plus a destructive variant.
+ *
+ * - `filled`   — solid blue, one per screen: the single primary action.
+ * - `tinted`   — blue on a light blue fill, for secondary actions.
+ * - `plain`    — blue text with no container, for tertiary and navigation.
+ *
+ * Restraint is the point: if everything is a filled blue button, nothing is.
+ */
 const VARIANTS: Record<Variant, string> = {
-  primary:
-    'bg-[var(--accent)] text-[var(--accent-text)] hover:bg-[var(--accent-hover)] ' +
-    'shadow-[var(--shadow-sm)] disabled:hover:bg-[var(--accent)]',
-  secondary:
-    'bg-[var(--surface-raised)] text-[var(--text-primary)] border border-[var(--border-default)] ' +
-    'hover:bg-[var(--surface-hover)] hover:border-[var(--border-strong)]',
-  ghost:
-    'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]',
-  danger: 'bg-[var(--negative)] text-white hover:brightness-110 shadow-[var(--shadow-sm)]',
+  filled: 'bg-[var(--blue)] text-white active:bg-[var(--blue-pressed)] disabled:hover:bg-[var(--blue)]',
+  tinted: 'bg-[var(--blue-tint)] text-[var(--blue)] active:bg-[rgba(0,105,224,0.18)]',
+  plain: 'bg-transparent text-[var(--blue)] active:opacity-55',
+  destructive: 'bg-[var(--red-tint)] text-[var(--red)] active:bg-[rgba(255,59,48,0.18)]',
 }
 
 const SIZES: Record<Size, string> = {
-  sm: 'h-8 px-3 text-[0.8125rem] gap-1.5 rounded-[var(--radius-sm)]',
-  md: 'h-9 px-4 text-[0.875rem] gap-2 rounded-[var(--radius-md)]',
-  lg: 'h-11 px-5 text-[0.9375rem] gap-2 rounded-[var(--radius-md)]',
-}
-
-/**
- * Press feedback fires on `:active` -- that is, on pointer-down rather than on
- * click. Waiting for the release to acknowledge a press is the single thing
- * that makes an interface feel dead, and 100ms is short enough that the scale
- * reads as the control yielding rather than as an animation playing.
- */
-function buttonClasses(variant: Variant, size: Size, fullWidth?: boolean, className?: string) {
-  return cn(
-    'inline-flex select-none items-center justify-center whitespace-nowrap font-medium',
-    'transition-[background-color,border-color,color,transform,opacity]',
-    'duration-[var(--duration-press)] ease-[var(--ease-out)]',
-    'active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45',
-    VARIANTS[variant],
-    SIZES[size],
-    fullWidth && 'w-full',
-    className,
-  )
+  sm: 'h-8 px-3.5 text-[15px] gap-1.5 rounded-[8px]',
+  md: 'h-10 px-4 text-[16px] gap-2 rounded-[var(--radius-control)]',
+  lg: 'h-[50px] px-5 text-[17px] gap-2 rounded-[14px]',
 }
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -49,19 +34,29 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean
   iconLeft?: ReactNode
   fullWidth?: boolean
-  /**
-   * Renders a router link styled as a button. Navigation must stay an anchor
-   * so it keeps native affordances -- middle-click, open in new tab, and the
-   * link semantics screen readers rely on.
-   */
+  /** Renders a router link styled as a button, keeping native anchor behaviour. */
   asLink?: string
 }
 
+function classesFor(variant: Variant, size: Size, fullWidth?: boolean, className?: string) {
+  return cn(
+    'inline-flex select-none items-center justify-center whitespace-nowrap font-medium',
+    'transition-[background-color,transform,opacity] duration-[var(--duration-press)] ease-[var(--ease)]',
+    // Feedback lands on pointer-down rather than on release. Waiting for the
+    // click to acknowledge a press is what makes an interface feel dead.
+    'active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40',
+    VARIANTS[variant],
+    SIZES[size],
+    fullWidth && 'w-full',
+    className,
+  )
+}
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = 'secondary', size = 'md', loading, iconLeft, fullWidth, className, children, disabled, asLink, ...rest },
+  { variant = 'tinted', size = 'md', loading, iconLeft, fullWidth, className, children, disabled, asLink, ...rest },
   ref,
 ) {
-  const classes = buttonClasses(variant, size, fullWidth, className)
+  const classes = classesFor(variant, size, fullWidth, className)
 
   if (asLink) {
     return (
@@ -74,7 +69,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 
   return (
     <button ref={ref} disabled={disabled || loading} className={classes} {...rest}>
-      {loading ? <Spinner className="h-3.5 w-3.5" /> : iconLeft}
+      {loading ? <Spinner className="h-4 w-4" /> : iconLeft}
       {children}
     </button>
   )
