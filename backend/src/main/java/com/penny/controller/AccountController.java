@@ -71,10 +71,15 @@ public class AccountController {
                 ? accountService.listForOwner(principal.getId())
                 : accountService.listAll();
 
-        // Resolve every owner in one pass rather than one lookup per account.
+        // Owners and balances are each resolved in one query rather than one per
+        // account -- the balance lookup used to be an N+1, issuing a separate
+        // aggregate against account_balances for every row on the page.
         Map<Long, String> usernames = usernamesFor(accounts);
+        Map<Long, Long> balances = ledgerService.getBalances(accounts.stream().map(Account::id).toList());
+
         List<AccountResponse> response = accounts.stream()
-                .map(a -> accountMapper.toResponse(a, ledgerService.getBalance(a.id()), usernames.get(a.ownerUserId())))
+                .map(a -> accountMapper.toResponse(
+                        a, balances.getOrDefault(a.id(), 0L), usernames.get(a.ownerUserId())))
                 .toList();
         return ResponseEntity.ok(response);
     }

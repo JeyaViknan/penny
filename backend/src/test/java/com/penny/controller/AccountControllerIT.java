@@ -85,7 +85,35 @@ class AccountControllerIT extends AbstractIntegrationTest {
 
         mockMvc.perform(get("/ledger/" + account.id()).header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2));
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.totalItems").value(2));
+    }
+
+    /**
+     * The account list resolves every balance in one bulk lookup rather than a
+     * query per row. The failure mode of a bad bulk implementation is not an
+     * error -- it is every row showing the same balance, or the wrong one, because
+     * the results came back keyed by position instead of by account id. So this
+     * asserts that three accounts with three different balances each report
+     * their own, and that an unfunded account reports zero rather than being
+     * dropped from the map.
+     */
+    @Test
+    void listedAccountsEachReportTheirOwnBalance() throws Exception {
+        User owner = fixture.user("bulk-owner", Role.CUSTOMER);
+        Account first = fixture.fundedAccount(owner.id(), 1_100);
+        Account second = fixture.fundedAccount(owner.id(), 2_200);
+        Account empty = fixture.account(owner.id());
+
+        String token = accessTokenFor("bulk-owner", LedgerFixture.PASSWORD);
+        mockMvc.perform(get("/accounts").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[?(@.id == " + first.id() + ")].balanceMinorUnits").value(1_100))
+                .andExpect(jsonPath("$[?(@.id == " + second.id() + ")].balanceMinorUnits").value(2_200))
+                .andExpect(jsonPath("$[?(@.id == " + empty.id() + ")].balanceMinorUnits").value(0))
+                .andExpect(jsonPath("$[*].ownerUsername", org.hamcrest.Matchers.everyItem(
+                        org.hamcrest.Matchers.equalTo("bulk-owner"))));
     }
 
     @Test
