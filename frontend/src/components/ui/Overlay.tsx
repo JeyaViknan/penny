@@ -138,7 +138,29 @@ export function Modal({
   useEffect(() => {
     if (!open) return
 
-    panelRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus()
+    // Moving focus into the dialog is deferred rather than done synchronously
+    // here, because React's StrictMode mounts, unmounts and remounts in
+    // development: the node focused by the first pass gets detached and focus
+    // silently falls back to <body>. Deferring lets the DOM settle, and the
+    // cleanup clears the timer so a remount cannot focus a node belonging to
+    // the previous pass.
+    //
+    // setTimeout, not requestAnimationFrame. Animation frames do not run in a
+    // background tab, so a dialog opened in one -- by a timer, or by a page
+    // restored from the back/forward cache -- would never receive focus at all,
+    // and the trap below would then be guarding a dialog the keyboard was never
+    // inside. A timer fires regardless of visibility.
+    const timer = setTimeout(() => {
+      const panel = panelRef.current
+      if (!panel) return
+      // The dialog element itself is the fallback target, which is why it
+      // carries tabIndex={-1}. A dialog with no enabled control -- a confirm
+      // whose buttons are briefly disabled while a request is in flight, say --
+      // would otherwise leave focus outside it entirely, and a keyboard user
+      // would be tabbing through the page behind the scrim.
+      const first = panel.querySelector<HTMLElement>(FOCUSABLE)
+      ;(first ?? panel).focus()
+    }, 0)
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
@@ -165,6 +187,7 @@ export function Modal({
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
+      clearTimeout(timer)
       document.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = previousOverflow
     }
@@ -180,6 +203,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        tabIndex={-1}
         className="anim-modal relative w-full max-w-md rounded-lg border border-line bg-surface shadow-[var(--shadow-pop)]"
       >
         <div className="px-5 pt-5 pb-4">
