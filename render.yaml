@@ -77,13 +77,23 @@ services:
       - key: JWT_SECRET
         generateValue: true
 
-      # Wired from the frontend's own URL, so the allowlist cannot drift out of
-      # step with where the frontend actually is.
+      # NOT wired with fromService, deliberately. The frontend already
+      # references this API that way, and pointing this back at the frontend
+      # creates a circular reference that Render cannot resolve: one of the two
+      # variables silently comes back empty. When it was VITE_API_BASE_URL that
+      # emptied, the frontend fell back to http://localhost:8080 and every call
+      # from the deployed site went nowhere -- a failure with no server log and
+      # no status code, because the request never left the browser.
+      #
+      # A pattern over Render's own domain breaks the cycle. It is broader than
+      # naming one origin, which is a real trade-off: any onrender.com site
+      # could issue a cross-origin request. It cannot do anything with one --
+      # every endpoint except the index and login requires a bearer token this
+      # grants no way to obtain. Narrow it to your exact frontend origin once
+      # the URL is known, which is strictly better.
       - key: CORS_ALLOWED_ORIGINS
-        fromService:
-          name: penny-web
-          type: web
-          property: host
+        value: "https://*.onrender.com,http://localhost:*"
+
 
       # First-run only. BootstrapRunner refuses to touch a non-empty users
       # table, so redeploys cannot resurrect this password after it is changed.
