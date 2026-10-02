@@ -112,13 +112,23 @@ services:
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
     envVars:
-      # Vite inlines this at build time, so the frontend has to be rebuilt to
-      # point at a different API — it is not a runtime setting.
+      # Set this by hand, once, after the first deploy:
+      #
+      #     https://<your-api-service>.onrender.com
+      #
+      # It cannot be wired with fromService. Render's `property: host` returns
+      # the *internal* private-network name -- literally "penny-api", with no
+      # domain -- which is routable between Render services but means nothing
+      # in a visitor's browser. Using it here produced a frontend calling
+      # https://penny-api, which fails DNS, and a sign-in error carrying no
+      # status code and leaving no server-side log, because the request never
+      # left the browser. There is no blueprint property for a service's public
+      # URL, so this is honestly a manual step rather than a cleverer expression.
+      #
+      # Vite inlines the value at build time, so changing it needs a rebuild,
+      # not a restart.
       - key: VITE_API_BASE_URL
-        fromService:
-          name: penny-api
-          type: web
-          property: host
+        sync: false
     routes:
       # The router owns every path, so unknown URLs must reach index.html
       # rather than Render's 404. Without this, refreshing on /transactions —
