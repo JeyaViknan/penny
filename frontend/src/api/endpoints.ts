@@ -5,6 +5,7 @@ import type {
   AuditLogResponse,
   AuditQuery,
   AuthResponse,
+  DemoAccountsResponse,
   CashResponse,
   LedgerEntryResponse,
   LedgerIntegrityResponse,
@@ -29,6 +30,9 @@ function idempotencyKey(): string {
 export const authApi = {
   login: (username: string, password: string) =>
     apiClient.post<AuthResponse>('/auth/login', { username, password }).then((r) => r.data),
+  /** Demo logins. Resolves to a disabled response on a non-demo instance. */
+  demoAccounts: () =>
+    apiClient.get<DemoAccountsResponse>('/auth/demo').then((r) => r.data),
 }
 
 export const usersApi = {

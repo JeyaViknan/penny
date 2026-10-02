@@ -33,6 +33,9 @@ public class SecurityConfig {
             "/",
             "/auth/login",
             "/auth/refresh",
+            // Demo logins. Returns nothing on an instance that was not seeded
+            // as a demo -- see DemoController for why this is public.
+            "/auth/demo",
             "/actuator/health",
             "/swagger-ui/**",
             "/v3/api-docs/**"

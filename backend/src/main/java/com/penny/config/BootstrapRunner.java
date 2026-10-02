@@ -136,6 +136,13 @@ public class BootstrapRunner implements ApplicationRunner {
      * transfers so the ledger has history to read.
      */
     private void seedDemoData(User admin) {
+        // A demo administrator, separate from the bootstrapped one. Visitors need
+        // an ADMIN login to see what the role actually permits -- freezing and
+        // closing accounts is most of what distinguishes it from a teller -- and
+        // handing out the real admin password to do that would mean publishing
+        // the one credential that is supposed to stay with the operator.
+        userService.createUser(new CreateUserRequest(
+                "dana_admin", "dana_admin@penny.local", demoPassword, Role.ADMIN));
         User teller = userService.createUser(new CreateUserRequest(
                 "tom_teller", "tom_teller@penny.local", demoPassword, Role.TELLER));
         userService.createUser(new CreateUserRequest(
