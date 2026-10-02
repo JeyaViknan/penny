@@ -28,6 +28,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
     private static final String[] PUBLIC_ENDPOINTS = {
+            // Exactly the root, not a prefix: "/" matches only "/" in Spring
+            // Security, so this opens the service index and nothing beneath it.
+            "/",
             "/auth/login",
             "/auth/refresh",
             "/actuator/health",
