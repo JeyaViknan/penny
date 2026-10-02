@@ -3,6 +3,7 @@ package com.penny.config;
 import com.penny.security.JwtAuthenticationFilter;
 import com.penny.security.RestAuthenticationEntryPoint;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -33,6 +34,25 @@ public class SecurityConfig {
             "/swagger-ui/**",
             "/v3/api-docs/**"
     };
+
+    /**
+     * Browser origins permitted to call this API.
+     *
+     * <p>Configured rather than compiled in. The previous value was the literal
+     * list {@code http://localhost:*, https://*.netlify.app}, which meant
+     * deploying the frontend anywhere else produced a failure that looks like
+     * nothing in particular: the browser blocks the response before any
+     * application code runs, so there is no log line, no status code worth
+     * reading, and the UI just shows "Network Error" on sign-in. Making it an
+     * environment variable turns a rebuild into a configuration change.
+     *
+     * <p>The default covers local development only. Deployments set
+     * {@code CORS_ALLOWED_ORIGINS} to their own frontend origin -- the Render
+     * blueprint wires it from the static site's URL, so the two cannot drift
+     * apart by hand.
+     */
+    @Value("${penny.cors.allowed-origins}")
+    private List<String> allowedOrigins;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -73,7 +93,9 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("http://localhost:*", "https://*.netlify.app"));
+        // Patterns, not plain origins: allowCredentials(true) forbids the "*"
+        // wildcard, and a port-wildcarded localhost is still needed for dev.
+        configuration.setAllowedOriginPatterns(normalise(allowedOrigins));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
@@ -81,5 +103,27 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    /**
+     * Accepts a bare hostname and assumes https.
+     *
+     * <p>An {@code Origin} header always carries a scheme, so a configured value
+     * of {@code penny-web.onrender.com} would silently match nothing and every
+     * browser request would be rejected -- with no server-side log line, because
+     * CORS failures are enforced in the browser. Render's blueprint format can
+     * only expose another service's address as a scheme-less host, so without
+     * this the allowlist would have to be pasted in by hand after the first
+     * deploy and corrected again on every rename. Anything that already has a
+     * scheme, including {@code http://localhost:*}, is left exactly as written.
+     */
+    private static List<String> normalise(List<String> origins) {
+        return origins.stream()
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .map(origin -> origin.startsWith("http://") || origin.startsWith("https://")
+                        ? origin
+                        : "https://" + origin)
+                .toList();
     }
 }

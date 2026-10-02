@@ -2,7 +2,25 @@ import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import type { AuthResponse } from './types'
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from './tokenStorage'
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
+/**
+ * Where the API lives, inlined by Vite at build time.
+ *
+ * <p>A bare hostname is accepted and assumed to be https. Render's blueprint
+ * format can only expose another service's address as a host with no scheme --
+ * `penny-api.onrender.com` -- and axios would treat that as a *relative path*,
+ * so every request would quietly go to the frontend's own origin and 404.
+ * Normalising here is what lets the deployment config stay declarative instead
+ * of requiring someone to paste the URL into a dashboard after the first
+ * deploy, and then again whenever the service is renamed.
+ */
+function resolveBaseUrl(raw: string | undefined): string {
+  if (!raw) return 'http://localhost:8080'
+  const trimmed = raw.trim().replace(/\/+$/, '')
+  if (/^https?:\/\//.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
+export const API_BASE_URL = resolveBaseUrl(import.meta.env.VITE_API_BASE_URL)
 
 /**
  * Repeated query parameters, not bracketed ones.

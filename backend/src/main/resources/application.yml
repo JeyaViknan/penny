@@ -2,7 +2,11 @@ spring:
   application:
     name: penny
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/penny}
+    # Composed from parts so a managed-Postgres provider can supply host, port
+    # and database name as separate variables -- Render hands out a
+    # postgres:// connection string, which JDBC does not accept as-is. DB_URL
+    # still overrides the whole thing when a provider gives a usable JDBC URL.
+    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:penny}}
     username: ${DB_USERNAME:penny}
     password: ${DB_PASSWORD:penny}
     hikari:
@@ -19,6 +23,18 @@ server:
     include-binding-errors: always
 
 penny:
+  # Browser origins allowed to call this API. The default is local development
+  # only; deployments set CORS_ALLOWED_ORIGINS to their own frontend origin.
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:*}
+  # First-run setup. Unset by default: with no password configured the runner
+  # does nothing, so an existing database is never touched. See BootstrapRunner
+  # for why this cannot simply live in a migration.
+  bootstrap:
+    admin-password: ${PENNY_BOOTSTRAP_ADMIN_PASSWORD:}
+    admin-email: ${PENNY_BOOTSTRAP_ADMIN_EMAIL:admin@penny.local}
+    seed-demo: ${PENNY_SEED_DEMO:false}
+    demo-password: ${PENNY_DEMO_PASSWORD:}
   jwt:
     secret: ${JWT_SECRET:CHANGE_ME_IN_PRODUCTION_THIS_MUST_BE_AT_LEAST_256_BITS_LONG}
     access-token-ttl-minutes: ${JWT_ACCESS_TTL_MINUTES:15}
