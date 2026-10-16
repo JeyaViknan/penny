@@ -12,6 +12,7 @@ import { formatShortDate, formatTime } from '../lib/format'
 import { formatDateTime } from '../lib/money'
 import { humanise } from '../lib/text'
 import { useAsync } from '../lib/useAsync'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 const PAGE_SIZE = 50
 
@@ -44,6 +45,7 @@ const ENTITY_OPTIONS = [
  * trail rather than the slice that happened to load.
  */
 export function AuditPage() {
+  useDocumentTitle('Audit')
   const [params, setParams] = useSearchParams()
   const action = params.get('action') ?? ''
   const entityType = params.get('entityType') ?? ''

@@ -10,6 +10,7 @@ import { AsyncSection, ErrorState, Shimmer, TableSkeleton } from '../components/
 import { formatDateTime } from '../lib/money'
 import { humanise, titleCase } from '../lib/text'
 import { useAsync } from '../lib/useAsync'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 /**
  * One transaction, in full.
@@ -24,6 +25,8 @@ export function TransferDetailPage() {
   const transactionId = Number(id)
   const { user } = useAuth()
   const transfer = useAsync(() => transfersApi.get(transactionId), [transactionId])
+
+  useDocumentTitle(transfer.data ? transfer.data.reference : 'Transaction')
 
   const canSeeLegs = user?.role !== 'CUSTOMER'
   const legs = useAsync(

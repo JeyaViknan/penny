@@ -9,6 +9,7 @@ import { Field, TextInput } from '../components/ui/Field'
 import { ErrorState } from '../components/ui/States'
 import { titleCase } from '../lib/text'
 import { useAsync } from '../lib/useAsync'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 /**
  * Sign-in, and — on a demo instance — the fastest honest explanation of what
@@ -26,6 +27,7 @@ import { useAsync } from '../lib/useAsync'
  * advertises nothing.
  */
 export function LoginPage() {
+  useDocumentTitle('Sign in')
   const { user, login } = useAuth()
   const navigate = useNavigate()
   const [username, setUsername] = useState('')

@@ -1,7 +1,9 @@
 import { PageLayout } from '../components/layout/PageLayout'
 import { ButtonLink } from '../components/ui/Button'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 export function NotFoundPage() {
+  useDocumentTitle('Not found')
   return (
     <PageLayout title="That page does not exist" width="measure">
       <p className="t-body text-ink-2">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { ledgerApi } from '../api/endpoints'
 import type { Role } from '../api/types'
@@ -6,6 +6,8 @@ import { useAuth } from '../auth/AuthContext'
 import { cn } from '../lib/cn'
 import { titleCase } from '../lib/text'
 import { useAsync } from '../lib/useAsync'
+import { CommandPalette } from './CommandPalette'
+import { ShortcutsOverlay } from './ShortcutsOverlay'
 import {
   IconAccounts,
   IconAudit,
@@ -14,6 +16,7 @@ import {
   IconHistory,
   IconLogout,
   IconMenu,
+  IconSearch,
   IconUsers,
 } from './Icons'
 
@@ -69,6 +72,46 @@ export function AppShell() {
   const { user, logout } = useAuth()
   const location = useLocation()
   const [navOpen, setNavOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+
+  /**
+   * Global keys, bound once at the shell rather than per page.
+   *
+   * <p>Both guard against firing while someone is typing. Without that, "?" in
+   * a transfer reference opens the help panel and eats the character, which is
+   * the kind of bug that makes people stop trusting a keyboard interface.
+   * Cmd/Ctrl+K is exempt from that guard on purpose -- it is the one binding
+   * that should work from inside a field, because reaching for it usually means
+   * abandoning what you were typing.
+   */
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null
+      const typing =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target?.isContentEditable
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setShortcutsOpen(false)
+        setPaletteOpen((isOpen) => !isOpen)
+        return
+      }
+      if (event.key === '?' && !typing && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault()
+        setPaletteOpen(false)
+        setShortcutsOpen((isOpen) => !isOpen)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  const closePalette = useCallback(() => setPaletteOpen(false), [])
+  const closeShortcuts = useCallback(() => setShortcutsOpen(false), [])
 
   useEffect(() => {
     setNavOpen(false)
@@ -127,11 +170,15 @@ export function AppShell() {
           canSendMoney={canSendMoney}
           onOpenNav={() => setNavOpen(true)}
           navOpen={navOpen}
+          onOpenPalette={() => setPaletteOpen(true)}
         />
         <main id="main" tabIndex={-1}>
           <Outlet />
         </main>
       </div>
+
+      <CommandPalette open={paletteOpen} onClose={closePalette} />
+      <ShortcutsOverlay open={shortcutsOpen} onClose={closeShortcuts} />
     </div>
   )
 }
@@ -145,10 +192,12 @@ function TopBar({
   canSendMoney,
   onOpenNav,
   navOpen,
+  onOpenPalette,
 }: {
   canSendMoney: boolean
   onOpenNav: () => void
   navOpen: boolean
+  onOpenPalette: () => void
 }) {
   return (
     <header className="sticky top-0 z-30 flex h-[var(--h-topbar)] items-center gap-3 border-b border-line bg-canvas/95 px-[var(--gutter)] backdrop-blur-sm">
@@ -164,6 +213,21 @@ function TopBar({
       <span className="lg:hidden">
         <Wordmark />
       </span>
+
+      {/* A visible trigger for the palette, not just a hidden binding. A
+          shortcut nobody can see is a shortcut nobody uses, and the printed
+          key is also how people learn the binding exists. */}
+      <button
+        type="button"
+        onClick={onOpenPalette}
+        className="group ml-auto flex h-[var(--h-control)] items-center gap-2 rounded-sm border border-line-strong bg-surface px-2.5 text-ink-3 transition-colors hover:border-[var(--ink-faint)] hover:text-ink-2 sm:ml-0 sm:w-56 lg:w-64"
+      >
+        <IconSearch className="h-4 w-4 shrink-0" />
+        <span className="hidden text-[13px] sm:inline">Search</span>
+        <kbd className="ml-auto hidden rounded-sm border border-line px-1 py-0.5 text-[10px] sm:inline">
+          ⌘K
+        </kbd>
+      </button>
 
       <div className="flex-1" />
 

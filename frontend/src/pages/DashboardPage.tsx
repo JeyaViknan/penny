@@ -15,6 +15,7 @@ import { formatDateTime, formatMinorUnits } from '../lib/money'
 import { humanise } from '../lib/text'
 import { useAsync } from '../lib/useAsync'
 import { statusLabel, statusTone } from './accountStatus'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 /**
  * What is happening with the money right now, top to bottom.
@@ -26,6 +27,7 @@ import { statusLabel, statusTone } from './accountStatus'
  * decoration that looks like information, which is worse than an empty space.
  */
 export function DashboardPage() {
+  useDocumentTitle('Overview')
   const { user } = useAuth()
   const navigate = useNavigate()
   const accounts = useAsync(() => accountsApi.list(), [])

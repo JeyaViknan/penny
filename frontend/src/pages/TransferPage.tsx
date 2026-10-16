@@ -12,6 +12,7 @@ import { maskAccount } from '../lib/format'
 import { formatMinorUnits, parseMajorUnits } from '../lib/money'
 import { titleCase } from '../lib/text'
 import { useAsync } from '../lib/useAsync'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 /**
  * Posting a transfer.
@@ -27,6 +28,7 @@ import { useAsync } from '../lib/useAsync'
  * is the fact that distinguishes this from a number changing in two places.
  */
 export function TransferPage() {
+  useDocumentTitle('Send money')
   const navigate = useNavigate()
   const { notify } = useToast()
   const [params] = useSearchParams()

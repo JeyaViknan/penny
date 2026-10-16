@@ -20,6 +20,7 @@ import { formatShortDate, formatTime } from '../lib/format'
 import { formatDateTime, formatMinorUnits, parseMajorUnits } from '../lib/money'
 import { titleCase } from '../lib/text'
 import { useAsync } from '../lib/useAsync'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { statusLabel, statusTone } from './accountStatus'
 
 type CashMode = 'deposit' | 'withdraw' | null
@@ -49,6 +50,8 @@ export function AccountDetailPage() {
     () => ledgerApi.forAccount(accountId, { page, size: PAGE_SIZE }),
     [accountId, page],
   )
+
+  useDocumentTitle(account.data ? `Account ${account.data.accountNumber}` : 'Account')
 
   const [cashMode, setCashMode] = useState<CashMode>(null)
   const [pendingStatus, setPendingStatus] = useState<AccountStatus | null>(null)

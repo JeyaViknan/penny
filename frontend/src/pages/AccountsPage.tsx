@@ -19,6 +19,7 @@ import { formatDateTime } from '../lib/money'
 import { titleCase } from '../lib/text'
 import { useAsync } from '../lib/useAsync'
 import { statusLabel, statusTone } from './accountStatus'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 const STATUS_OPTIONS = [
   { value: 'ACTIVE', label: 'Active' },
@@ -41,6 +42,7 @@ const TYPE_OPTIONS = [
  * server, for the same reason the transaction filters already live there.
  */
 export function AccountsPage() {
+  useDocumentTitle('Accounts')
   const { user } = useAuth()
   const navigate = useNavigate()
   const accounts = useAsync(() => accountsApi.list(), [])

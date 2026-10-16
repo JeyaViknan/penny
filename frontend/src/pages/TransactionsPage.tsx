@@ -10,6 +10,7 @@ import type {
 import { useAuth } from '../auth/AuthContext'
 import { PageLayout } from '../components/layout/PageLayout'
 import { Badge } from '../components/ui/Badge'
+import { Button } from '../components/ui/Button'
 import { DataTable, type Column, type SortState } from '../components/ui/DataTable'
 import { Money } from '../components/ui/Money'
 import { Drawer } from '../components/ui/Overlay'
@@ -21,10 +22,12 @@ import {
   SearchInput,
   Toolbar,
 } from '../components/ui/Toolbar'
+import { downloadCsv, timestampedFilename, toCsv } from '../lib/csv'
 import { counterpartyDetail, counterpartyName, formatShortDate, maskAccount } from '../lib/format'
 import { formatDateTime } from '../lib/money'
 import { humanise } from '../lib/text'
 import { useAsync } from '../lib/useAsync'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { useDebounced } from '../lib/useDebounced'
 
 const PAGE_SIZE = 50
@@ -58,6 +61,8 @@ const RANGE_OPTIONS = [
 export function TransactionsPage() {
   const { user } = useAuth()
   const [params, setParams] = useSearchParams()
+  useDocumentTitle('Transactions')
+  const [exporting, setExporting] = useState(false)
 
   const [searchText, setSearchText] = useState(params.get('q') ?? '')
   const query = useDebounced(searchText)
@@ -105,6 +110,50 @@ export function TransactionsPage() {
       }),
     [query, type, from, sortKey, direction, page],
   )
+
+  /**
+   * Exports what the filters select, not what is on screen.
+   *
+   * <p>Exporting the visible page would be the easy version and the wrong one:
+   * someone who filters to a quarter and exports expects the quarter, not the
+   * fifty rows that happened to render. So this re-runs the same query with the
+   * page size raised, which also means the export is produced by the same
+   * server-side filtering as the table -- there is no second definition of what
+   * "matching" means that could drift from the first.
+   */
+  async function exportCsv() {
+    setExporting(true)
+    try {
+      const all = await transfersApi.history({
+        q: query || undefined,
+        type: type ? [type as TransactionType] : undefined,
+        from,
+        sort: sortKey,
+        direction,
+        page: 0,
+        size: 100,
+      })
+      const csv = toCsv(
+        ['Date', 'Reference', 'Type', 'From account', 'From holder', 'To account', 'To holder', 'Initiated by', 'Amount'],
+        all.items.map((row) => [
+          row.createdAt,
+          row.reference,
+          row.transactionType,
+          row.debitAccountNumber,
+          row.debitOwnerUsername ?? 'Cash vault',
+          row.creditAccountNumber,
+          row.creditOwnerUsername ?? 'Cash vault',
+          row.initiatedByUsername ?? '',
+          // Minor units as a decimal string, never a float: the point of
+          // storing integers is lost if the export reintroduces the rounding.
+          (row.amountMinorUnits / 100).toFixed(2),
+        ]),
+      )
+      downloadCsv(timestampedFilename('penny-transactions'), csv)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   function update(key: string, value: string) {
     setParams((current) => {
@@ -191,6 +240,11 @@ export function TransactionsPage() {
           user?.role === 'CUSTOMER'
             ? 'Every movement touching your accounts, oldest records included.'
             : undefined
+        }
+        actions={
+          <Button onClick={() => void exportCsv()} loading={exporting}>
+            Export CSV
+          </Button>
         }
         toolbar={
           <Toolbar>

@@ -18,6 +18,7 @@ import { formatDateTime } from '../lib/money'
 import { titleCase } from '../lib/text'
 import { useAsync } from '../lib/useAsync'
 import { statusLabel, statusTone } from './accountStatus'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 const ROLE_DESCRIPTIONS: Record<Role, string> = {
   CUSTOMER: 'Sees only their own accounts and transfers.',
@@ -50,6 +51,7 @@ const ROLE_OPTIONS = [
  * interpreted. Everything on this screen is an IAM question.
  */
 export function PeoplePage() {
+  useDocumentTitle('People')
   const { user } = useAuth()
   const people = useAsync(() => usersApi.list(), [])
   // Loaded once and joined client-side. Every person's account count comes from
