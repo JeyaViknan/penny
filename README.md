@@ -690,6 +690,18 @@ more than usual.
 | `VITE_API_BASE_URL` | **Set by hand after the first deploy** to `https://<api-service>.onrender.com`. See below. Vite inlines it at **build** time, so changing it needs a rebuild, not a restart. |
 | `SPRING_PROFILES_ACTIVE` | `prod`, which turns on the startup safety check below. |
 
+**The sign-in page never waits on the API.** The role list is static content
+compiled into the bundle, not data fetched at runtime. An earlier version
+fetched it, which meant the explanation of what the product does arrived after a
+round trip — and because the free API sleeps, the first visitor spent half a
+minute looking at placeholder boxes. The static site does not sleep, so the page
+is immediate no matter what the backend is doing, and it warms the API in the
+background while the visitor reads. This is why `VITE_DEMO_PASSWORD` is a
+build-time value and why `PENNY_DEMO_PASSWORD` is a literal rather than
+generated: both sides need the identical string, and two independently generated
+secrets can never match. The accounts it unlocks hold fictional money; the
+bootstrapped administrator's password is still generated and still private.
+
 **The one manual step.** `VITE_API_BASE_URL` cannot be wired from the blueprint.
 Render's `fromService` exposes only a service's *internal* private-network name
 — literally `penny-api`, with no domain — which routes between Render services
@@ -776,7 +788,8 @@ the new password in place and the ledger untouched.
 | `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD` | yes | Database. `DB_URL` overrides all five with a full JDBC URL. |
 | `CORS_ALLOWED_ORIGINS` | yes | Comma-separated frontend origins; a bare host is assumed `https://` |
 | `PENNY_BOOTSTRAP_ADMIN_PASSWORD` | first run only | Creates `admin`. Ignored once any user exists. |
-| `PENNY_SEED_DEMO` / `PENNY_DEMO_PASSWORD` | optional | Seeds demo staff, customers and a balanced ledger |
+| `PENNY_SEED_DEMO` / `PENNY_DEMO_PASSWORD` | optional | Seeds demo staff, customers and a balanced ledger. The password must match the frontend's `VITE_DEMO_PASSWORD` exactly. |
+| `VITE_DEMO_PASSWORD` (frontend, build time) | optional | Marks the build as a demo. Present, the sign-in page lists the four roles with one-click sign-in; absent, it renders a plain form. |
 | `DB_POOL_SIZE` | optional | Defaults to 20; the blueprint sets 5 for Render's free Postgres |
 
 ### Free-tier caveats

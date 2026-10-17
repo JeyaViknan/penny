@@ -101,8 +101,15 @@ services:
         generateValue: true
       - key: PENNY_SEED_DEMO
         value: "true"
+      # A fixed value, not a generated one. This password is printed on the
+      # sign-in page by design -- it is how a visitor tries the roles -- so
+      # generating it bought no secrecy and cost a great deal: the frontend
+      # needs the identical string at BUILD time, and two independently
+      # generated secrets can never match. The accounts it unlocks hold
+      # fictional money. The one credential that is genuinely secret, the
+      # bootstrapped administrator's, is still generated below.
       - key: PENNY_DEMO_PASSWORD
-        generateValue: true
+        value: PennyDemo2026!
 
   # --- Frontend -----------------------------------------------------------
   - type: web
@@ -129,6 +136,16 @@ services:
       # not a restart.
       - key: VITE_API_BASE_URL
         sync: false
+
+      # Must match PENNY_DEMO_PASSWORD on the API exactly: the backend hashes it
+      # into the seeded accounts, and the frontend compiles it into the sign-in
+      # buttons. Keeping both literal and identical here is what makes that
+      # checkable by reading one file.
+      #
+      # Its presence is also the switch: remove it and the sign-in page renders
+      # with no demo logins, which is what a non-demo deployment should do.
+      - key: VITE_DEMO_PASSWORD
+        value: PennyDemo2026!
     routes:
       # The router owns every path, so unknown URLs must reach index.html
       # rather than Render's 404. Without this, refreshing on /transactions —

@@ -10,6 +10,10 @@ COPY . .
 # (build-time env var), this image is for local docker-compose only.
 ARG VITE_API_BASE_URL=http://localhost:8080
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+# Presence of this marks the build as a demo; it must match the API's
+# PENNY_DEMO_PASSWORD or the one-click role logins will not authenticate.
+ARG VITE_DEMO_PASSWORD=
+ENV VITE_DEMO_PASSWORD=$VITE_DEMO_PASSWORD
 RUN npm run build
 
 # --- Runtime stage ---

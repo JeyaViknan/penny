@@ -156,17 +156,3 @@ export interface ApiErrorResponse {
   path: string
   fieldErrors: { field: string; message: string }[]
 }
-
-/** Demo logins, published only by an instance seeded as a demo. */
-export interface DemoAccount {
-  username: string
-  role: Role
-  summary: string
-  permissions: string[]
-}
-
-export interface DemoAccountsResponse {
-  enabled: boolean
-  password: string | null
-  accounts: DemoAccount[]
-}

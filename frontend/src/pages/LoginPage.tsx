@@ -1,51 +1,59 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { extractErrorMessage } from '../api/client'
-import { authApi } from '../api/endpoints'
-import type { DemoAccount } from '../api/types'
+import { API_BASE_URL, extractErrorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { Button } from '../components/ui/Button'
 import { Field, TextInput } from '../components/ui/Field'
-import { ErrorState, Shimmer } from '../components/ui/States'
+import { ErrorState } from '../components/ui/States'
+import { DEMO_PASSWORD, DEMO_ROLES, IS_DEMO, type DemoRole } from '../lib/demoRoles'
 import { titleCase } from '../lib/text'
-import { useAsync } from '../lib/useAsync'
-import { useSlowLoad } from '../lib/useSlowLoad'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 /**
- * Sign-in, and — on a demo instance — the fastest honest explanation of what
- * this system does.
+ * Sign-in, and — on a demo build — the fastest honest explanation of what this
+ * system does.
  *
  * <p>Access control is the most interesting property of a ledger and the least
  * visible one: the same code shows a customer, a teller, an auditor and an
- * administrator materially different products. Behind a single login form none
- * of that can be discovered, and a reviewer has to take the README's word for
- * it. Listing the four roles with what each is permitted turns a claim into
- * something checkable in about a minute.
+ * administrator materially different products. Listing the four roles with what
+ * each is permitted turns a claim into something checkable in about a minute.
  *
- * <p>The list comes from the server, which publishes it only when the instance
- * was seeded as a demo, so a real deployment renders a plain sign-in form and
- * advertises nothing.
+ * <p><b>Nothing on this page waits on the API.</b> An earlier version fetched
+ * the role list, which meant the explanation of the product arrived after a
+ * round trip — and on free hosting, where the service sleeps, that was half a
+ * minute of placeholder boxes for the first visitor. The roles are static
+ * content describing enforced rules, so they are compiled in and paint with the
+ * first frame. The static site itself does not sleep, so the page is immediate
+ * regardless of what the backend is doing.
  */
 export function LoginPage() {
-  useDocumentTitle('Sign in')
   const { user, login } = useAuth()
   const navigate = useNavigate()
+  useDocumentTitle('Sign in')
+
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [pendingRole, setPendingRole] = useState<string | null>(null)
 
-  // Failing quietly is right here: on a non-demo instance this returns
-  // disabled, and if it cannot be reached at all the sign-in form must still
-  // work. Nothing on this page depends on it.
-  const demo = useAsync(() => authApi.demoAccounts(), [])
-  // Above the early return, not beside the markup that uses it. Signing in
-  // populates `user`, so the next render takes the redirect branch below -- and
-  // a hook called after that point would run on one render and not the next,
-  // which React treats as a fatal "rendered fewer hooks than expected".
-  const wakingServer = useSlowLoad(demo.loading)
+  /**
+   * Wakes the API while the visitor is still reading.
+   *
+   * <p>Rendering instantly solves half the problem; the other half is that the
+   * first click would then pay the cold start instead. A sleeping instance
+   * takes roughly thirty seconds to answer, and the several seconds somebody
+   * spends reading four role descriptions is time that can be spent waking it.
+   *
+   * <p>Deliberately fire-and-forget. Nothing on the page depends on the result,
+   * a failure here is not the visitor's problem, and `keepalive` lets it
+   * outlive a quick navigation.
+   */
+  useEffect(() => {
+    void fetch(`${API_BASE_URL}/actuator/health`, { mode: 'cors', keepalive: true }).catch(
+      () => undefined,
+    )
+  }, [])
 
   if (user) return <Navigate to="/" replace />
 
@@ -67,13 +75,6 @@ export function LoginPage() {
     event.preventDefault()
     void signIn(username, password)
   }
-
-  const demoAccounts = demo.data?.enabled ? demo.data.accounts : []
-  const demoPassword = demo.data?.password ?? ''
-  // The section is rendered while loading as well as after, so the column does
-  // not appear from nothing once the request lands. Only a resolved, non-demo
-  // instance hides it entirely.
-  const showRoles = demo.loading || demoAccounts.length > 0
 
   return (
     <div className="min-h-screen bg-canvas px-6 py-12">
@@ -139,7 +140,7 @@ export function LoginPage() {
           </div>
 
           {/* --- Roles ---------------------------------------------------- */}
-          {showRoles && (
+          {IS_DEMO && (
             <div>
               <h2 className="t-section mb-1 text-ink">Try it as someone</h2>
               <p className="t-body mb-5 max-w-[58ch] text-ink-2">
@@ -148,33 +149,27 @@ export function LoginPage() {
                 actions change.
               </p>
 
-              {demo.loading ? (
-                <RolesSkeleton waking={wakingServer} />
-              ) : (
-                <>
-                  <ul className="overflow-hidden rounded-md border border-line bg-surface">
-                    {demoAccounts.map((account) => (
-                      <li key={account.username} className="border-b border-line last:border-b-0">
-                        <RoleRow
-                          account={account}
-                          busy={submitting && pendingRole === account.username}
-                          disabled={submitting}
-                          onSignIn={() => {
-                            setPendingRole(account.username)
-                            void signIn(account.username, demoPassword)
-                          }}
-                        />
-                      </li>
-                    ))}
-                  </ul>
+              <ul className="overflow-hidden rounded-md border border-line bg-surface">
+                {DEMO_ROLES.map((account) => (
+                  <li key={account.username} className="border-b border-line last:border-b-0">
+                    <RoleRow
+                      account={account}
+                      busy={submitting && pendingRole === account.username}
+                      disabled={submitting}
+                      onSignIn={() => {
+                        setPendingRole(account.username)
+                        void signIn(account.username, DEMO_PASSWORD)
+                      }}
+                    />
+                  </li>
+                ))}
+              </ul>
 
-                  <p className="t-micro mt-3 max-w-[58ch]">
-                    Demo data. The money is fictional and every account shares one password, shown
-                    because this instance exists to be looked at. Deposits and withdrawals post
-                    against a cash vault, so the books stay balanced no matter what you do here.
-                  </p>
-                </>
-              )}
+              <p className="t-micro mt-3 max-w-[58ch]">
+                Demo data. The money is fictional and every account shares one password, shown
+                because this instance exists to be looked at. Deposits and withdrawals post
+                against a cash vault, so the books stay balanced no matter what you do here.
+              </p>
             </div>
           )}
         </div>
@@ -197,7 +192,7 @@ function RoleRow({
   disabled,
   onSignIn,
 }: {
-  account: DemoAccount
+  account: DemoRole
   busy: boolean
   disabled: boolean
   onSignIn: () => void
@@ -228,47 +223,6 @@ function RoleRow({
       >
         Sign in
       </Button>
-    </div>
-  )
-}
-
-/**
- * Holds the shape of the role list while it loads.
- *
- * <p>Four rows because four roles arrive, at the height a real row occupies, so
- * the list resolves in place instead of the column appearing from nothing and
- * pushing the page around. The previous version rendered the section only once
- * the data existed, which on a cold-started free instance meant the most
- * important thing on the page was absent for half a minute and then jumped in.
- */
-function RolesSkeleton({ waking }: { waking: boolean }) {
-  return (
-    <div aria-busy="true" aria-live="polite">
-      <ul className="overflow-hidden rounded-md border border-line bg-surface">
-        {[0, 1, 2, 3].map((row) => (
-          <li key={row} className="border-b border-line px-4 py-3.5 last:border-b-0">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <Shimmer className="h-3 w-28" />
-                <Shimmer className="mt-2.5 h-3 w-full max-w-[20rem]" />
-                {/* Four permission lines: the real rows carry three to five, so
-                    four is the shape the list settles into on average and keeps
-                    the container from growing much as it resolves. */}
-                <Shimmer className="mt-3 h-2.5 w-44" />
-                <Shimmer className="mt-2 h-2.5 w-52" />
-                <Shimmer className="mt-2 h-2.5 w-36" />
-                <Shimmer className="mt-2 h-2.5 w-48" />
-              </div>
-              <Shimmer className="h-8 w-[72px] shrink-0 rounded-md" />
-            </div>
-          </li>
-        ))}
-      </ul>
-      <p className="t-micro mt-3 max-w-[58ch]">
-        {waking
-          ? 'Waking the server. This instance sleeps when idle, so the first visit after a quiet spell takes up to half a minute.'
-          : 'Loading the demo logins…'}
-      </p>
     </div>
   )
 }
