@@ -6,9 +6,10 @@ import type { DemoAccount } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { Button } from '../components/ui/Button'
 import { Field, TextInput } from '../components/ui/Field'
-import { ErrorState } from '../components/ui/States'
+import { ErrorState, Shimmer } from '../components/ui/States'
 import { titleCase } from '../lib/text'
 import { useAsync } from '../lib/useAsync'
+import { useSlowLoad } from '../lib/useSlowLoad'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
 
 /**
@@ -40,6 +41,11 @@ export function LoginPage() {
   // disabled, and if it cannot be reached at all the sign-in form must still
   // work. Nothing on this page depends on it.
   const demo = useAsync(() => authApi.demoAccounts(), [])
+  // Above the early return, not beside the markup that uses it. Signing in
+  // populates `user`, so the next render takes the redirect branch below -- and
+  // a hook called after that point would run on one render and not the next,
+  // which React treats as a fatal "rendered fewer hooks than expected".
+  const wakingServer = useSlowLoad(demo.loading)
 
   if (user) return <Navigate to="/" replace />
 
@@ -64,6 +70,10 @@ export function LoginPage() {
 
   const demoAccounts = demo.data?.enabled ? demo.data.accounts : []
   const demoPassword = demo.data?.password ?? ''
+  // The section is rendered while loading as well as after, so the column does
+  // not appear from nothing once the request lands. Only a resolved, non-demo
+  // instance hides it entirely.
+  const showRoles = demo.loading || demoAccounts.length > 0
 
   return (
     <div className="min-h-screen bg-canvas px-6 py-12">
@@ -129,7 +139,7 @@ export function LoginPage() {
           </div>
 
           {/* --- Roles ---------------------------------------------------- */}
-          {demoAccounts.length > 0 && (
+          {showRoles && (
             <div>
               <h2 className="t-section mb-1 text-ink">Try it as someone</h2>
               <p className="t-body mb-5 max-w-[58ch] text-ink-2">
@@ -138,27 +148,33 @@ export function LoginPage() {
                 actions change.
               </p>
 
-              <ul className="overflow-hidden rounded-md border border-line bg-surface">
-                {demoAccounts.map((account) => (
-                  <li key={account.username} className="border-b border-line last:border-b-0">
-                    <RoleRow
-                      account={account}
-                      busy={submitting && pendingRole === account.username}
-                      disabled={submitting}
-                      onSignIn={() => {
-                        setPendingRole(account.username)
-                        void signIn(account.username, demoPassword)
-                      }}
-                    />
-                  </li>
-                ))}
-              </ul>
+              {demo.loading ? (
+                <RolesSkeleton waking={wakingServer} />
+              ) : (
+                <>
+                  <ul className="overflow-hidden rounded-md border border-line bg-surface">
+                    {demoAccounts.map((account) => (
+                      <li key={account.username} className="border-b border-line last:border-b-0">
+                        <RoleRow
+                          account={account}
+                          busy={submitting && pendingRole === account.username}
+                          disabled={submitting}
+                          onSignIn={() => {
+                            setPendingRole(account.username)
+                            void signIn(account.username, demoPassword)
+                          }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
 
-              <p className="t-micro mt-3 max-w-[58ch]">
-                Demo data. The money is fictional and every account shares one password, shown
-                because this instance exists to be looked at. Deposits and withdrawals post
-                against a cash vault, so the books stay balanced no matter what you do here.
-              </p>
+                  <p className="t-micro mt-3 max-w-[58ch]">
+                    Demo data. The money is fictional and every account shares one password, shown
+                    because this instance exists to be looked at. Deposits and withdrawals post
+                    against a cash vault, so the books stay balanced no matter what you do here.
+                  </p>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -212,6 +228,47 @@ function RoleRow({
       >
         Sign in
       </Button>
+    </div>
+  )
+}
+
+/**
+ * Holds the shape of the role list while it loads.
+ *
+ * <p>Four rows because four roles arrive, at the height a real row occupies, so
+ * the list resolves in place instead of the column appearing from nothing and
+ * pushing the page around. The previous version rendered the section only once
+ * the data existed, which on a cold-started free instance meant the most
+ * important thing on the page was absent for half a minute and then jumped in.
+ */
+function RolesSkeleton({ waking }: { waking: boolean }) {
+  return (
+    <div aria-busy="true" aria-live="polite">
+      <ul className="overflow-hidden rounded-md border border-line bg-surface">
+        {[0, 1, 2, 3].map((row) => (
+          <li key={row} className="border-b border-line px-4 py-3.5 last:border-b-0">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <Shimmer className="h-3 w-28" />
+                <Shimmer className="mt-2.5 h-3 w-full max-w-[20rem]" />
+                {/* Four permission lines: the real rows carry three to five, so
+                    four is the shape the list settles into on average and keeps
+                    the container from growing much as it resolves. */}
+                <Shimmer className="mt-3 h-2.5 w-44" />
+                <Shimmer className="mt-2 h-2.5 w-52" />
+                <Shimmer className="mt-2 h-2.5 w-36" />
+                <Shimmer className="mt-2 h-2.5 w-48" />
+              </div>
+              <Shimmer className="h-8 w-[72px] shrink-0 rounded-md" />
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="t-micro mt-3 max-w-[58ch]">
+        {waking
+          ? 'Waking the server. This instance sleeps when idle, so the first visit after a quiet spell takes up to half a minute.'
+          : 'Loading the demo logins…'}
+      </p>
     </div>
   )
 }
